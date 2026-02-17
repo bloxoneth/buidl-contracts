@@ -515,6 +515,8 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
         if (componentBuildIds.length == 0) {
             if (p.kind == KIND_BRICK) {
                 require(_isGenesisNoComponentMint(p), "components required");
+            } else {
+                require(p.kind == KIND_COLLECTOR, "components required");
             }
             return;
         }

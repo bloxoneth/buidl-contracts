@@ -25,6 +25,8 @@ contract BuildNFTTest is Test {
     uint8 private constant KIND_COLLECTOR = 2;
     uint256 private constant BLOX_PER_MASS = 1e18;
     bool private kindUnlockedForTests;
+    uint256 private defaultComponentId;
+    uint256 private defaultComponentLicenseId;
 
     function setUp() public {
         uint256 nonce = vm.getNonce(address(this));
@@ -99,14 +101,57 @@ contract BuildNFTTest is Test {
         if (kind > KIND_BRICK) {
             _unlockBuildKinds();
         }
+        uint256[] memory ids = componentTokenIds;
+        uint256[] memory counts = componentCounts;
+        if (kind > KIND_BRICK && ids.length == 0) {
+            _ensureDefaultComponentLicenseFor(minter);
+            ids = new uint256[](1);
+            counts = new uint256[](1);
+            ids[0] = defaultComponentId;
+            counts[0] = 1;
+        }
         uint256 lockAmount = mass * BLOX_PER_MASS;
 
         vm.startPrank(minter);
         blox.approve(address(buildNFT), lockAmount);
         tokenId = buildNFT.mint{value: buildNFT.FEE_PER_MINT()}(
-            geo, mass, "ipfs://test", componentTokenIds, componentCounts, kind, width, depth, density
+            geo, mass, "ipfs://test", ids, counts, kind, width, depth, density
         );
         vm.stopPrank();
+    }
+
+    function _ensureDefaultComponentLicenseFor(address minter) internal {
+        if (defaultComponentId == 0) {
+            uint256 next = buildNFT.nextTokenId();
+            for (uint256 i = 1; i < next; i++) {
+                if (buildNFT.kindOf(i) != KIND_BRICK) continue;
+                (uint8 w, uint8 d, uint16 dens) = buildNFT.brickSpecOf(i);
+                if (w == 1 && d == 1 && dens == 1) {
+                    defaultComponentId = i;
+                    break;
+                }
+            }
+            require(defaultComponentId != 0, "default component missing");
+
+            uint256 existingLicenseId = licenseRegistry.licenseIdForBuild(defaultComponentId);
+            if (existingLicenseId == 0) {
+                bytes32 geo = buildNFT.geometryOf(defaultComponentId);
+                licenseRegistry.registerBuild(defaultComponentId, geo);
+                existingLicenseId = licenseRegistry.licenseIdForBuild(defaultComponentId);
+            }
+            defaultComponentLicenseId = existingLicenseId;
+        }
+
+        if (licenseNFT.balanceOf(minter, defaultComponentLicenseId) == 0) {
+            uint256 price = licenseRegistry.quote(defaultComponentId, 1);
+            vm.prank(minter);
+            licenseRegistry.mintLicenseForBuild{value: price}(defaultComponentId, 1);
+        }
+
+        if (!licenseNFT.isApprovedForAll(minter, address(buildNFT))) {
+            vm.prank(minter);
+            licenseNFT.setApprovalForAll(address(buildNFT), true);
+        }
     }
 
     function _mintBuildAsAlice(bytes32 geo, uint256 mass) internal returns (uint256 tokenId) {
@@ -203,14 +248,17 @@ contract BuildNFTTest is Test {
 
     function testMintWithReservationCreditsNonMintingDesigner() public {
         _unlockBuildKinds();
+        _ensureDefaultComponentLicenseFor(alice);
 
         uint256 authorPk = 0xBEEF11;
         address author = vm.addr(authorPk);
         bytes32 geo = keccak256("geo-reservation");
         uint256 mass = 12;
         string memory uri = "ipfs://reserved/1";
-        uint256[] memory componentTokenIds = new uint256[](0);
-        uint256[] memory componentCounts = new uint256[](0);
+        uint256[] memory componentTokenIds = new uint256[](1);
+        uint256[] memory componentCounts = new uint256[](1);
+        componentTokenIds[0] = defaultComponentId;
+        componentCounts[0] = 1;
         uint256 nonce = 1;
         uint256 expiry = block.timestamp + 1 days;
 
@@ -248,14 +296,17 @@ contract BuildNFTTest is Test {
 
     function testMintWithReservationReplayReverts() public {
         _unlockBuildKinds();
+        _ensureDefaultComponentLicenseFor(alice);
 
         uint256 authorPk = 0xBEEF22;
         address author = vm.addr(authorPk);
         bytes32 geo = keccak256("geo-reservation-replay");
         uint256 mass = 7;
         string memory uri = "ipfs://reserved/2";
-        uint256[] memory componentTokenIds = new uint256[](0);
-        uint256[] memory componentCounts = new uint256[](0);
+        uint256[] memory componentTokenIds = new uint256[](1);
+        uint256[] memory componentCounts = new uint256[](1);
+        componentTokenIds[0] = defaultComponentId;
+        componentCounts[0] = 1;
         uint256 nonce = 7;
         uint256 expiry = block.timestamp + 1 days;
 
@@ -387,15 +438,13 @@ contract BuildNFTTest is Test {
     }
 
     function testFeeRouting_NoComponentsGoesToTreasury() public {
-        bytes32 geo = keccak256("geo-fee-no-components");
-        uint256 mass = 4;
+        bytes32 geo = keccak256("geo-fee-no-components-brick");
         uint256 fee = buildNFT.FEE_PER_MINT();
 
-        _unlockBuildKinds();
         uint256 liquidityBefore = liquidityReceiver.balance;
         uint256 treasuryBefore = protocolTreasury.balance;
 
-        _mintBuildAsAlice(geo, mass);
+        _mintBrickAs(alice, geo, 1, 1, 1, 1);
 
         uint256 liquidityCut = (fee * 30) / 100;
         uint256 treasuryCut = (fee * 20) / 100;
@@ -718,6 +767,68 @@ contract BuildNFTTest is Test {
         vm.stopPrank();
     }
 
+    function testBuildMintRequiresComponents() public {
+        _unlockBuildKinds();
+        uint256[] memory emptyTokenIds = new uint256[](0);
+        uint256[] memory emptyCounts = new uint256[](0);
+
+        vm.startPrank(alice);
+        blox.approve(address(buildNFT), 4 * BLOX_PER_MASS);
+        uint256 fee = buildNFT.FEE_PER_MINT();
+        vm.expectRevert(bytes("components required"));
+        buildNFT.mint{value: fee}(
+            keccak256("geo-build-no-components"),
+            4,
+            "ipfs://test",
+            emptyTokenIds,
+            emptyCounts,
+            KIND_BUILD,
+            0,
+            0,
+            1
+        );
+        vm.stopPrank();
+    }
+
+    function testBuildMintUsesOneLicensePerComponentType() public {
+        uint256[] memory emptyTokenIds = new uint256[](0);
+        uint256 componentId =
+            _mintBuildAs(bob, keccak256("geo-license-per-type-component"), 3, emptyTokenIds, _ones(0));
+
+        vm.prank(bob);
+        licenseRegistry.registerBuild(componentId, keccak256("geo-license-per-type-component"));
+
+        uint256 licenseId = licenseRegistry.licenseIdForBuild(componentId);
+        uint256 licensePrice = licenseRegistry.quote(componentId, 1);
+        vm.prank(alice);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
+        vm.prank(alice);
+        licenseNFT.setApprovalForAll(address(buildNFT), true);
+        assertEq(licenseNFT.balanceOf(alice, licenseId), 1);
+
+        uint256[] memory componentTokenIds = new uint256[](1);
+        componentTokenIds[0] = componentId;
+        uint256[] memory componentCounts = new uint256[](1);
+        componentCounts[0] = 6;
+
+        uint256 buildId = _mintAs(
+            alice,
+            keccak256("geo-license-per-type-uses-six"),
+            9,
+            componentTokenIds,
+            componentCounts,
+            KIND_BUILD,
+            0,
+            0,
+            1
+        );
+        assertEq(licenseNFT.balanceOf(alice, licenseId), 0);
+
+        vm.prank(alice);
+        buildNFT.burn(buildId);
+        assertEq(licenseNFT.balanceOf(alice, licenseId), 1);
+    }
+
     function testKindDisabledRevertsUntilEnabled() public {
         bytes32 geo = keccak256("geo-kind-disabled");
         uint256[] memory emptyIds = new uint256[](0);
@@ -860,13 +971,36 @@ contract BuildNFTTest is Test {
         uint256 mass = 3;
         uint16 density = 27;
 
-        uint256[] memory emptyIds = new uint256[](0);
-        uint256[] memory emptyCounts = new uint256[](0);
-        uint256 tokenId = _mintAs(alice, geo, mass, emptyIds, emptyCounts, KIND_BUILD, 0, 0, density);
+        uint256 componentBrick =
+            _mintBrickAs(bob, keccak256("geo-density-lock-component"), 1, 1, 1, density);
+        vm.prank(bob);
+        licenseRegistry.registerBuild(componentBrick, keccak256("geo-density-lock-component"));
+        uint256 price = licenseRegistry.quote(componentBrick, 1);
+        vm.prank(alice);
+        licenseRegistry.mintLicenseForBuild{value: price}(componentBrick, 1);
+        vm.prank(alice);
+        licenseNFT.setApprovalForAll(address(buildNFT), true);
+
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = componentBrick;
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+
+        uint256 tokenId = _mintAs(alice, geo, mass, ids, counts, KIND_BUILD, 0, 0, density);
         assertEq(buildNFT.lockedBloxOf(tokenId), mass * BLOX_PER_MASS);
 
-        uint256 brickId =
-            _mintComposedBrickAs(bob, keccak256("geo-density-brick"), mass, 2, 2, density);
+        counts[0] = 4;
+        uint256 brickId = _mintAs(
+            bob,
+            keccak256("geo-density-brick"),
+            mass,
+            ids,
+            counts,
+            KIND_BRICK,
+            2,
+            2,
+            density
+        );
         assertEq(buildNFT.lockedBloxOf(brickId), mass * BLOX_PER_MASS);
     }
 
