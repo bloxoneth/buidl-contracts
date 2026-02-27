@@ -16,6 +16,7 @@
     "sim:protocol": "node scripts/protocol-sim.mjs",
     "sim:bw": "node scripts/bw-sim.mjs",
     "sim:emissions": "node scripts/emissions-sim.mjs",
+    "sim:emissions:controller": "node scripts/emissions-controller-sim.mjs",
     "sim:local": "node scripts/protocol-sim.mjs --rpc http://127.0.0.1:8545 --no-anvil",
     "deploy:sepolia": "bash scripts/deploy-sepolia.sh"
   },

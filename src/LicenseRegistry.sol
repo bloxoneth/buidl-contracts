@@ -2,6 +2,8 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IBuildNFT {
     function ownerOf(uint256 tokenId) external view returns (address);
@@ -23,6 +25,8 @@ interface ILicenseNFT {
 }
 
 contract LicenseRegistry is Ownable {
+    using SafeERC20 for IERC20;
+
     struct Pricing {
         uint256 startPrice;
         uint256 step;
@@ -32,6 +36,7 @@ contract LicenseRegistry is Ownable {
 
     address public buildNFT;
     address public licenseNFT;
+    IERC20 public blox;
 
     address public treasury;
     uint256 public lpBudgetBalance;
@@ -46,6 +51,7 @@ contract LicenseRegistry is Ownable {
     uint256 public nextLicenseId = 1;
 
     mapping(uint256 => uint256) public licenseIdForBuild;
+    mapping(uint256 => uint256) public buildIdForLicense;
     mapping(uint256 => Pricing) public pricingForLicense;
 
     event TreasurySet(address indexed treasury);
@@ -70,14 +76,18 @@ contract LicenseRegistry is Ownable {
         uint256 indexed licenseId, address indexed buyer, uint256 qty, uint256 price
     );
 
-    constructor(address buildNFT_, address licenseNFT_, address treasury_) Ownable(msg.sender) {
+    constructor(address buildNFT_, address licenseNFT_, address treasury_, address blox_)
+        Ownable(msg.sender)
+    {
         require(buildNFT_ != address(0), "buildNFT=0");
         require(licenseNFT_ != address(0), "licenseNFT=0");
         require(treasury_ != address(0), "treasury=0");
+        require(blox_ != address(0), "blox=0");
 
         buildNFT = buildNFT_;
         licenseNFT = licenseNFT_;
         treasury = treasury_;
+        blox = IERC20(blox_);
         keepers[msg.sender] = true;
         minRebalanceInterval = 1 hours;
         maxSlippageBps = 1_000;
@@ -88,6 +98,10 @@ contract LicenseRegistry is Ownable {
     }
 
     receive() external payable {}
+
+    function topUpLpBudget() external payable {
+        lpBudgetBalance += msg.value;
+    }
 
     function setTreasury(address treasury_) external onlyOwner {
         require(treasury_ != address(0), "treasury=0");
@@ -168,7 +182,7 @@ contract LicenseRegistry is Ownable {
         return _quoteFromPricing(pricing, _initialSoldForBuild(buildId), qty);
     }
 
-    function mintLicenseForBuild(uint256 buildId, uint256 qty) external payable {
+    function mintLicenseForBuild(uint256 buildId, uint256 qty) external {
         uint256 licenseId = licenseIdForBuild[buildId];
         if (licenseId == 0) {
             licenseId = _registerBuild(buildId);
@@ -178,7 +192,7 @@ contract LicenseRegistry is Ownable {
         }
 
         uint256 price = _quoteForLicense(licenseId, qty);
-        require(msg.value == price, "bad price");
+        blox.safeTransferFrom(msg.sender, treasury, price);
 
         // NEW: fail early if this purchase would exceed max supply
         uint256 mintedSoFar = ILicenseNFT(licenseNFT).totalSupply(licenseId);
@@ -187,12 +201,6 @@ contract LicenseRegistry is Ownable {
         require(mintedSoFar + qty <= cap, "max exceeded");
 
         ILicenseNFT(licenseNFT).mint(msg.sender, licenseId, qty);
-
-        uint256 lpAmount = msg.value / 2;
-        uint256 treasuryAmount = msg.value - lpAmount;
-        lpBudgetBalance += lpAmount;
-        (bool ok,) = treasury.call{value: treasuryAmount}("");
-        require(ok, "treasury xfer");
 
         emit LicenseMinted(licenseId, msg.sender, qty, price);
     }
@@ -203,6 +211,7 @@ contract LicenseRegistry is Ownable {
 
         licenseId = nextLicenseId++;
         licenseIdForBuild[buildId] = licenseId;
+        buildIdForLicense[licenseId] = buildId;
         pricingForLicense[licenseId] = pricing;
 
         ILicenseNFT(licenseNFT).setMaxSupply(licenseId, maxSupply);

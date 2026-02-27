@@ -1,0 +1,39 @@
+{
+  "runId": "e2e-bw-lock-8563",
+  "rpc": "http://127.0.0.1:8563",
+  "contracts": {
+    "blox": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "distributor": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "licenseNFT": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+    "licenseRegistry": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+    "buildNFT": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+    "chainId": 31337
+  },
+  "scenariosMinted": 24,
+  "rewardMints": 10,
+  "fees": {
+    "scenarioLicenseSpendEth": 0.07219152153217218,
+    "scenarioMintFeeEth": 0.24000000000000007,
+    "rewardsLicenseSpendEth": 0.961234304932056,
+    "rewardsMintFeeEth": 0.09999999999999999
+  },
+  "ownerRewards": [
+    {
+      "owner": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "ethOwed": "1.362707447801640147"
+    },
+    {
+      "owner": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "ethOwed": "0.026329750735818065"
+    },
+    {
+      "owner": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+      "ethOwed": "0.142318366951949167"
+    },
+    {
+      "owner": "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+      "ethOwed": "0.008644434510592621"
+    }
+  ],
+  "protocolTreasuryEthOwed": "0.005"
+}

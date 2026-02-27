@@ -246,7 +246,7 @@ async function main() {
     blox = await deployContract(deployer, "BLOX.sol/BLOX.json", [deployerAddr]);
     distributor = await deployContract(deployer, "Distributor.sol/Distributor.json", [blox.target, deployerAddr]);
     licenseNFT = await deployContract(deployer, "LicenseNFT.sol/LicenseNFT.json", ["ipfs://licenses/{id}.json"]);
-    licenseRegistry = await deployContract(deployer, "LicenseRegistry.sol/LicenseRegistry.json", [predictedBuildAddr, licenseNFT.target, deployerAddr]);
+    licenseRegistry = await deployContract(deployer, "LicenseRegistry.sol/LicenseRegistry.json", [predictedBuildAddr, licenseNFT.target, deployerAddr, blox.target]);
     buildNFT = await deployContract(deployer, "BuildNFT.sol/BuildNFT.json", [
       blox.target,
       distributor.target,
@@ -294,6 +294,7 @@ async function main() {
     const u = await user.getAddress();
     await (await blox.transfer(u, ethers.parseEther("10000000"))).wait();
     await (await blox.connect(user).approve(buildNFT.target, ethers.MaxUint256)).wait();
+    await (await blox.connect(user).approve(licenseRegistry.target, ethers.MaxUint256)).wait();
     await (await licenseNFT.connect(user).setApprovalForAll(buildNFT.target, true)).wait();
   }
 
@@ -416,8 +417,7 @@ async function main() {
   const buildALicenseId = await licenseRegistry.licenseIdForBuild(buildA);
 
   for (const signer of [bob, carol, dave, eve, alice]) {
-    const q = await licenseRegistry.quote(buildA, 5);
-    await (await licenseRegistry.connect(signer).mintLicenseForBuild(buildA, 5, { value: q })).wait();
+    await (await licenseRegistry.connect(signer).mintLicenseForBuild(buildA, 5)).wait();
   }
 
   const selfBefore = await distributor.ethOwed(bobAddr);
@@ -463,8 +463,7 @@ async function main() {
   await (await licenseRegistry.connect(carol).registerBuild(buildB, buildBHash)).wait();
   const buildBLicenseId = await licenseRegistry.licenseIdForBuild(buildB);
   for (const signer of [dave, eve]) {
-    const q = await licenseRegistry.quote(buildB, 2);
-    await (await licenseRegistry.connect(signer).mintLicenseForBuild(buildB, 2, { value: q })).wait();
+    await (await licenseRegistry.connect(signer).mintLicenseForBuild(buildB, 2)).wait();
   }
 
   const uniqueBefore = await distributor.uniqueUsers(buildB);
@@ -505,8 +504,7 @@ async function main() {
 
   await expectRevert(
     async () => {
-      const q = await licenseRegistry.quote(buildA, 1);
-      await licenseRegistry.connect(alice).mintLicenseForBuild(buildA, 1, { value: q });
+      await licenseRegistry.connect(alice).mintLicenseForBuild(buildA, 1);
     },
     "build burned"
   );
@@ -533,8 +531,7 @@ async function main() {
   console.log("[sim] Burned component routing validated.");
 
   const lpBefore = await licenseRegistry.lpBudgetBalance();
-  const qOne = await licenseRegistry.quote(buildB, 1);
-  await (await licenseRegistry.connect(alice).mintLicenseForBuild(buildB, 1, { value: qOne })).wait();
+  await (await licenseRegistry.connect(alice).mintLicenseForBuild(buildB, 1)).wait();
   const lpAfter = await licenseRegistry.lpBudgetBalance();
   expect(lpAfter - lpBefore === qOne / 2n, "license fee split must allocate 50% to LP budget");
   invariantLog.push({ key: "license_split_50_50", pass: true });

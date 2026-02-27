@@ -1,0 +1,117 @@
+{
+  "runId": "emissions-test-2",
+  "rpc": "http://127.0.0.1:8545",
+  "contracts": {
+    "blox": "0x59b670e9fA9D0A427751Af201D676719a970857b",
+    "distributor": "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1",
+    "licenseNFT": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44",
+    "licenseRegistry": "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
+    "buildNFT": "0x4A679253410272dd5232B3Ff7cF5dbB88f295319",
+    "chainId": 31337
+  },
+  "poolBlox": 1000000,
+  "model": "multiplier",
+  "bwRange": {
+    "min": 1,
+    "max": 5
+  },
+  "decay": {
+    "source": "build_use",
+    "sourceNote": "using Distributor.lastUsedAt",
+    "halfLifeDays": 90,
+    "floor": 0.25
+  },
+  "formula": "bwMultiplier = lerp(bwMin,bwMax, normalizedOwnerBw); adjustedMultiplier = 1 + (bwMultiplier-1)*max(decayFloor, exp(-ln(2)*daysSinceUse/halfLifeDays)); effectiveLocked = lockedBlox*adjustedMultiplier; share = effectiveLocked/sum(effectiveLocked)",
+  "weights": {
+    "locked": 0.7,
+    "bw": 0.3
+  },
+  "tokenCount": 341,
+  "ownerCount": 6,
+  "owners": [
+    {
+      "owner": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "tokens": 288,
+      "lockedBlox": 726785,
+      "bwScore": 436380001189,
+      "avgDaysSinceUse": 1846.4821124856169,
+      "bwMultiplier": 1.366705883293166,
+      "decayFactor": 0.25,
+      "adjustedBwMultiplier": 1.0916764708232916,
+      "effectiveLocked": 793414.083847306,
+      "sharePct": 20.89965619343092,
+      "emissionBlox": 208996.5619343092,
+      "grade": "A"
+    },
+    {
+      "owner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+      "tokens": 13,
+      "lockedBlox": 718300,
+      "bwScore": 374390000586,
+      "avgDaysSinceUse": 1824.7967435516791,
+      "bwMultiplier": 1.3146134458200254,
+      "decayFactor": 0.25,
+      "adjustedBwMultiplier": 1.0786533614550065,
+      "effectiveLocked": 774796.7095331311,
+      "sharePct": 20.4092480568575,
+      "emissionBlox": 204092.48056857497,
+      "grade": "A"
+    },
+    {
+      "owner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "tokens": 13,
+      "lockedBlox": 718250,
+      "bwScore": 373110000024,
+      "avgDaysSinceUse": 1825.0762281508232,
+      "bwMultiplier": 1.3135378150958283,
+      "decayFactor": 0.25,
+      "adjustedBwMultiplier": 1.078384453773957,
+      "effectiveLocked": 774549.6339231447,
+      "sharePct": 20.402739733640622,
+      "emissionBlox": 204027.39733640623,
+      "grade": "A"
+    },
+    {
+      "owner": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+      "tokens": 13,
+      "lockedBlox": 718245,
+      "bwScore": 101210000021,
+      "avgDaysSinceUse": 3197.158003220717,
+      "bwMultiplier": 1.0850504201720454,
+      "decayFactor": 0.25,
+      "adjustedBwMultiplier": 1.0212626050430114,
+      "effectiveLocked": 733516.7597591177,
+      "sharePct": 19.32187542821002,
+      "emissionBlox": 193218.75428210018,
+      "grade": "B"
+    },
+    {
+      "owner": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+      "tokens": 3,
+      "lockedBlox": 143000,
+      "bwScore": 4760000000765,
+      "avgDaysSinceUse": 0.000023148148148148147,
+      "bwMultiplier": 5,
+      "decayFactor": 0.9999998217214201,
+      "adjustedBwMultiplier": 4.99999928688568,
+      "effectiveLocked": 714999.8980246523,
+      "sharePct": 18.834114936040457,
+      "emissionBlox": 188341.14936040458,
+      "grade": "B"
+    },
+    {
+      "owner": "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc",
+      "tokens": 11,
+      "lockedBlox": 5025,
+      "bwScore": 0,
+      "avgDaysSinceUse": 3650,
+      "bwMultiplier": 1,
+      "decayFactor": 0.25,
+      "adjustedBwMultiplier": 1,
+      "effectiveLocked": 5025,
+      "sharePct": 0.13236565182047086,
+      "emissionBlox": 1323.6565182047086,
+      "grade": "E"
+    }
+  ]
+}

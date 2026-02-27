@@ -1,0 +1,72 @@
+[
+  {
+    "iteration": 1,
+    "tokenId": 333,
+    "components": "309|316|322",
+    "gasUsed": "1175182",
+    "txHash": "0xf409dcf252b3aa052074d5d01a874108d506f287ddf36d4354f3c3fbe991b325"
+  },
+  {
+    "iteration": 2,
+    "tokenId": 334,
+    "components": "310|317|323",
+    "gasUsed": "1158082",
+    "txHash": "0x3979b47c34fb46390ebccbc69b72cc664956e388b4438163642177277b172cac"
+  },
+  {
+    "iteration": 3,
+    "tokenId": 335,
+    "components": "311|318|324",
+    "gasUsed": "1158082",
+    "txHash": "0x5dec0f252c14d0ba153946ad82ae7b9cc334775c8b346a20dba31251f9212aa4"
+  },
+  {
+    "iteration": 4,
+    "tokenId": 336,
+    "components": "312|319|325",
+    "gasUsed": "1158082",
+    "txHash": "0x05b724581c68cd71b8ffb2a0f98273b405ed26decfeedeb77910e945905f1830"
+  },
+  {
+    "iteration": 5,
+    "tokenId": 337,
+    "components": "313|320|326",
+    "gasUsed": "1158082",
+    "txHash": "0xf814d5e5cedaecd34d06a02a388073f6266635cf9773e2d7d8265411e5e537cd"
+  },
+  {
+    "iteration": 6,
+    "tokenId": 338,
+    "components": "314|321|327",
+    "gasUsed": "1158082",
+    "txHash": "0xb9a09b83ab3db09ef1670521305c3dde8d00c68a58ddbd981748fc032e819a6f"
+  },
+  {
+    "iteration": 7,
+    "tokenId": 339,
+    "components": "315|322|328",
+    "gasUsed": "971383",
+    "txHash": "0xbc1dfdd5ed8fc0a6a2d628a2d1201beb68942a20fb0df9faf7267079df739bf3"
+  },
+  {
+    "iteration": 8,
+    "tokenId": 340,
+    "components": "316|323|329",
+    "gasUsed": "784708",
+    "txHash": "0x0153bc2282574fe16ad87e80af32a1709d4a898ee9fbf13fb95aa56adf159ea7"
+  },
+  {
+    "iteration": 9,
+    "tokenId": 341,
+    "components": "317|324|330",
+    "gasUsed": "784708",
+    "txHash": "0x7796fe46d3d128ad31d141107c9222bdb4877a040b7a117f843485ac7d264fa3"
+  },
+  {
+    "iteration": 10,
+    "tokenId": 342,
+    "components": "318|325|331",
+    "gasUsed": "784708",
+    "txHash": "0x4c8884e26cb58bc174737d1233934a83ff5601ab36d59b0b3cdcc1112432fe85"
+  }
+]

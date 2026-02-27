@@ -1,0 +1,196 @@
+{
+  "rewardMints": 10,
+  "totalOwnerSliceEth": 0.05,
+  "perTx": [
+    {
+      "iter": 1,
+      "tx": "0xf409dcf252b3aa052074d5d01a874108d506f287ddf36d4354f3c3fbe991b325",
+      "components": "309|316|322",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.000004128820805157,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.000041288193187823,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.00495458298600702
+      },
+      "evenByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666666,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 2,
+      "tx": "0x3979b47c34fb46390ebccbc69b72cc664956e388b4438163642177277b172cac",
+      "components": "310|317|323",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.000003568880796372,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.000713775875191626,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.004282655244012002
+      },
+      "evenByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666666,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 3,
+      "tx": "0x5dec0f252c14d0ba153946ad82ae7b9cc334775c8b346a20dba31251f9212aa4",
+      "components": "311|318|324",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.000003568880796372,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.000713775875191626,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.004282655244012002
+      },
+      "evenByRecipient": {
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666666,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666666,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 4,
+      "tx": "0x05b724581c68cd71b8ffb2a0f98273b405ed26decfeedeb77910e945905f1830",
+      "components": "312|319|325",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 6.49266588653e-7,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.000129853266049107,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.00486949746736224
+      },
+      "evenByRecipient": {
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666666,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666666,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 5,
+      "tx": "0xf814d5e5cedaecd34d06a02a388073f6266635cf9773e2d7d8265411e5e537cd",
+      "components": "313|320|326",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.000006485084564489,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.000129701686361135,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.004863813229074376
+      },
+      "evenByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666666,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 6,
+      "tx": "0xb9a09b83ab3db09ef1670521305c3dde8d00c68a58ddbd981748fc032e819a6f",
+      "components": "314|321|327",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.000005740528357418,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.000688863375565254,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.004305396096077328
+      },
+      "evenByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666666,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 7,
+      "tx": "0xbc1dfdd5ed8fc0a6a2d628a2d1201beb68942a20fb0df9faf7267079df739bf3",
+      "components": "315|322|328",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.000005045408879155,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001210898082914596,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.003784056508206249
+      },
+      "evenByRecipient": {
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666666,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666666,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 8,
+      "tx": "0x0153bc2282574fe16ad87e80af32a1709d4a898ee9fbf13fb95aa56adf159ea7",
+      "components": "316|323|329",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.000003399048385244,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.000407885792072257,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.004588715159542499
+      },
+      "evenByRecipient": {
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666666,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666666,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 9,
+      "tx": "0x7796fe46d3d128ad31d141107c9222bdb4877a040b7a117f843485ac7d264fa3",
+      "components": "317|324|330",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.000067114094073127,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.000402684563851515,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.004530201342075358
+      },
+      "evenByRecipient": {
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": 0.001666666666666666,
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666668
+      }
+    },
+    {
+      "iter": 10,
+      "tx": "0x4c8884e26cb58bc174737d1233934a83ff5601ab36d59b0b3cdcc1112432fe85",
+      "components": "318|325|331",
+      "ownerSliceEth": 0.005,
+      "actualByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.000047169811401299,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001768867924535755,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.003183962264062946
+      },
+      "evenByRecipient": {
+        "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": 0.001666666666666666,
+        "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": 0.001666666666666666,
+        "0x90f79bf6eb2c4f870365e785982e1f101e93b906": 0.001666666666666668
+      }
+    }
+  ],
+  "ownerComparison": [
+    {
+      "owner": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "actualEth": 0.016329750735818063,
+      "evenEth": 0.013333333333333334,
+      "deltaEth": 0.002996417402484731,
+      "deltaPct": 22.47
+    },
+    {
+      "owner": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+      "actualEth": 0.012707447801640149,
+      "evenEth": 0.013333333333333332,
+      "deltaEth": -0.000625885531693185,
+      "deltaPct": -4.69
+    },
+    {
+      "owner": "0x90f79bf6eb2c4f870365e785982e1f101e93b906",
+      "actualEth": 0.012318366951949168,
+      "evenEth": 0.011666666666666667,
+      "deltaEth": 0.000651700285282499,
+      "deltaPct": 5.58
+    },
+    {
+      "owner": "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65",
+      "actualEth": 0.008644434510592621,
+      "evenEth": 0.011666666666666665,
+      "deltaEth": -0.003022232156074045,
+      "deltaPct": -25.9
+    }
+  ]
+}

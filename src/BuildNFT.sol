@@ -93,14 +93,15 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
     // Constants
     // ==============================
 
-    uint256 public constant FEE_PER_MINT = 0.0001 ether;
+    uint256 public constant FEE_PER_MINT = 0.001 ether;
+    uint256 public constant BURN_FEE = 0.005 ether;
     uint256 public constant BLOX_PER_MASS = 1e18;
     uint256 public constant RESERVATION_MAX_TTL = 7 days;
 
     // Fee split in basis points (bps). Sum must be 10_000.
     uint256 public constant LIQUIDITY_BPS = 3_000; // 30%
-    uint256 public constant TREASURY_BPS = 2_000; // 20%
-    uint256 public constant OWNERS_BPS = 5_000; // 50%
+    uint256 public constant TREASURY_BPS = 3_000; // 30%
+    uint256 public constant OWNERS_BPS = 4_000; // 40%
     uint256 public constant MAX_COMPONENT_TYPES = 32;
     uint16 public constant TOTAL_BRICK_SIZES = 55;
     uint8 public constant KIND_BRICK = 0;
@@ -350,7 +351,8 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
     // Burn
     // ==============================
 
-    function burn(uint256 tokenId) external nonReentrant {
+    function burn(uint256 tokenId) external payable nonReentrant {
+        require(msg.value == BURN_FEE, "bad burn fee");
         // ownerOf() reverts if token doesn't exist
         address owner = ownerOf(tokenId);
         require(kindOf[tokenId] != KIND_BRICK, "brick");
@@ -392,6 +394,7 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
 
         if (returned > 0) blox.safeTransfer(owner, returned);
         if (recycled > 0) blox.safeTransfer(distributor, recycled);
+        _payETH(liquidityReceiver, msg.value);
 
         emit BuildBurned(tokenId, owner, mass, gh, locked, returned, recycled);
     }

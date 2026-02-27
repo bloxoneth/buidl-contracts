@@ -36,7 +36,7 @@ const BLOX_ABI = [
 const LICENSE_REGISTRY_ABI = [
   "function licenseIdForBuild(uint256) view returns (uint256)",
   "function quote(uint256,uint256) view returns (uint256)",
-  "function mintLicenseForBuild(uint256,uint256) payable",
+  "function mintLicenseForBuild(uint256,uint256)",
   "function registerBuild(uint256,bytes32)",
 ];
 
@@ -139,7 +139,7 @@ async function ensureBloxAndApprovals({
 
 async function ensureLicenseBalance(registry, ownerSigner, buildId, qty) {
   const price = await registry.quote(buildId, qty);
-  const tx = await registry.connect(ownerSigner).mintLicenseForBuild(buildId, qty, { value: price });
+  const tx = await registry.connect(ownerSigner).mintLicenseForBuild(buildId, qty);
   await tx.wait();
   return price;
 }
@@ -190,6 +190,7 @@ async function main() {
   const registry = new ethers.Contract(contracts.licenseRegistry, LICENSE_REGISTRY_ABI, provider);
   const licenseNft = new ethers.Contract(contracts.licenseNFT, LICENSE_NFT_ABI, provider);
   const distributor = new ethers.Contract(contracts.distributor, DISTRIBUTOR_ABI, provider);
+  const registryAddress = await registry.getAddress();
 
   const componentPool = await findComponentPool(buildNft, registry);
   const runDir = path.join(opts.outDir, opts.runId);
@@ -223,6 +224,11 @@ async function main() {
       funderSigner: funder,
       requiredBlox: mass + 5_000n * BLOX_UNIT,
     });
+    const registryAllowance = await blox.allowance(ownerAddr, registryAddress);
+    if (registryAllowance < mass + 5_000n * BLOX_UNIT) {
+      const tx = await blox.connect(owner).approve(registryAddress, ethers.MaxUint256);
+      await tx.wait();
+    }
 
     for (const cId of componentIds) {
       const spend = await ensureLicenseBalance(registry, owner, BigInt(cId), 1n);
