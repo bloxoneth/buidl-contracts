@@ -258,8 +258,12 @@ async function main() {
     ]);
 
     await (await licenseNFT.setRegistry(licenseRegistry.target)).wait();
+    await (await licenseNFT.setDistributor(distributor.target)).wait();
     await (await distributor.setBuildNFT(buildNFT.target)).wait();
     await (await distributor.setProtocolTreasury(deployerAddr)).wait();
+    await (await distributor.setLicenseContracts(licenseRegistry.target, licenseNFT.target)).wait();
+    const licenseHolderBps = BigInt(process.env.LICENSE_HOLDER_BPS || "0");
+    await (await distributor.setLicenseHolderBps(licenseHolderBps)).wait();
 
     await (await buildNFT.setKindEnabled(1, true)).wait();
     await (await buildNFT.setKindEnabled(2, true)).wait();

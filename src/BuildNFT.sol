@@ -277,7 +277,10 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
             require(_isAllowedDensity(p.density), "density");
             require(p.width > 0 && p.width <= 10, "width");
             require(p.depth > 0 && p.depth <= 10, "depth");
+            bytes32 expectedBrickGeo = _brickGeometryHash(p.width, p.depth, p.density);
+            require(p.geometryHash == expectedBrickGeo, "bad brick geohash");
         } else {
+            require(p.width == 0 && p.depth == 0, "non-brick dims");
             require(p.density > 0, "density");
             if (p.kind != KIND_COLLECTOR) {
                 require(!geometryConsumed[p.geometryHash], "geometry consumed");
@@ -290,6 +293,7 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
             bytes32 specKey = _brickSpecKey(p.width, p.depth, p.density);
             require(!brickSpecConsumed[specKey], "brick spec used");
             brickSpecConsumed[specKey] = true;
+            geometryConsumed[p.geometryHash] = true;
             _coverBrickSize(p.width, p.depth);
         } else if (p.kind != KIND_COLLECTOR) {
             geometryConsumed[p.geometryHash] = true;
@@ -476,6 +480,11 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
         return keccak256(abi.encodePacked(w, d, density));
     }
 
+    function _brickGeometryHash(uint8 width, uint8 depth, uint16 density) internal pure returns (bytes32) {
+        (uint8 w, uint8 d) = _canonicalDims(width, depth);
+        return keccak256(abi.encodePacked(w, d, density));
+    }
+
     function _brickSizeKey(uint8 width, uint8 depth) internal pure returns (uint16) {
         (uint8 w, uint8 d) = _canonicalDims(width, depth);
         return (uint16(w) << 8) | uint16(d);
@@ -559,7 +568,7 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
         uint256[] calldata componentBuildIds
     ) internal {
         if (componentBuildIds.length == 0) return;
-        if (targetKind == KIND_BRICK) return;
+        targetKind;
         for (uint256 i = 0; i < componentBuildIds.length; i++) {
             uint256 licenseId =
                 ILicenseRegistry(licenseRegistry).licenseIdForBuild(componentBuildIds[i]);

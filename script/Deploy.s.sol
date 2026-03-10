@@ -19,6 +19,7 @@ contract Deploy is Script {
         address protocolTreasury =
             vm.envOr("PROTOCOL_TREASURY", address(0x87cC3F4d366a05fD2644c75334dbd1e811C2a54D));
         uint256 maxMass = vm.envOr("MAX_MASS", uint256(1_000_000));
+        uint256 licenseHolderBps = vm.envOr("LICENSE_HOLDER_BPS", uint256(0));
         string memory licenseBaseURI =
             vm.envOr("LICENSE_BASE_URI", string("https://ethblox-app.vercel.app/api/licenses/metadata/{id}"));
 
@@ -42,8 +43,11 @@ contract Deploy is Script {
         );
 
         licenseNFT.setRegistry(address(licenseRegistry));
+        licenseNFT.setDistributor(address(distributor));
         distributor.setBuildNFT(address(buildNFT));
         distributor.setProtocolTreasury(protocolTreasury);
+        distributor.setLicenseContracts(address(licenseRegistry), address(licenseNFT));
+        distributor.setLicenseHolderBps(uint16(licenseHolderBps));
 
         buildNFT.setKindEnabled(1, true);
         buildNFT.setKindEnabled(2, true);

@@ -7,11 +7,17 @@ import {
 } from "openzeppelin-contracts/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 
+interface IDistributorLicenseSync {
+    function onLicenseTransferBefore(address from, address to, uint256[] calldata ids) external;
+    function onLicenseTransferAfter(address from, address to, uint256[] calldata ids) external;
+}
+
 contract LicenseNFT is ERC1155, ERC1155Supply, Ownable {
     string public constant name = "ETHBLOX License";
     string public constant symbol = "BLICENSE";
 
     address public registry;
+    address public distributor;
     mapping(uint256 => uint256) public maxSupply;
 
     // NEW: events (safe addition)
@@ -20,6 +26,7 @@ contract LicenseNFT is ERC1155, ERC1155Supply, Ownable {
     event LicenseMinted(address indexed to, uint256 indexed id, uint256 qty);
     event LicenseBurned(address indexed from, uint256 indexed id, uint256 qty);
     event BaseURISet(string newUri);
+    event DistributorSet(address indexed distributor);
 
     constructor(string memory uri) ERC1155(uri) Ownable(msg.sender) {}
 
@@ -34,6 +41,11 @@ contract LicenseNFT is ERC1155, ERC1155Supply, Ownable {
 
         // NEW: emit
         emit RegistrySet(newRegistry);
+    }
+
+    function setDistributor(address newDistributor) external onlyOwner {
+        distributor = newDistributor;
+        emit DistributorSet(newDistributor);
     }
 
     function setMaxSupply(uint256 id, uint256 max) external {
@@ -91,6 +103,12 @@ contract LicenseNFT is ERC1155, ERC1155Supply, Ownable {
         internal
         override(ERC1155, ERC1155Supply)
     {
+        if (distributor != address(0)) {
+            IDistributorLicenseSync(distributor).onLicenseTransferBefore(from, to, ids);
+        }
         super._update(from, to, ids, values);
+        if (distributor != address(0)) {
+            IDistributorLicenseSync(distributor).onLicenseTransferAfter(from, to, ids);
+        }
     }
 }

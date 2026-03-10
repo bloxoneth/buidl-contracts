@@ -17,6 +17,15 @@ interface IBuildNFTView {
     function bwAnchorOf(uint256 tokenId) external view returns (uint256);
 }
 
+interface ILicenseRegistryView {
+    function licenseIdForBuild(uint256 buildId) external view returns (uint256);
+}
+
+interface ILicenseNFTView {
+    function totalSupply(uint256 id) external view returns (uint256);
+    function balanceOf(address account, uint256 id) external view returns (uint256);
+}
+
 contract Distributor is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -46,6 +55,10 @@ contract Distributor is ReentrancyGuard {
     // --- usage fee registry ---
     address public buildNFT;
     address public protocolTreasury;
+    address public licenseRegistry;
+    address public licenseNFT;
+    uint16 public licenseHolderBps;
+    uint256 private constant LICENSE_ACC = 1e24;
     mapping(uint256 => int256) public bwScore;
     mapping(uint256 => mapping(address => bool)) public hasUsed;
     mapping(uint256 => mapping(address => bool)) public hasBuiltWith;
@@ -56,6 +69,9 @@ contract Distributor is ReentrancyGuard {
     mapping(uint256 => uint256) public lastNonOwnerUseAt;
     mapping(uint256 => uint256) public firstSeenAt;
     mapping(address => uint256) public ethOwed;
+    mapping(uint256 => uint256) public accEthPerLicense;
+    mapping(uint256 => uint256) public licenseRewardCarry;
+    mapping(uint256 => mapping(address => uint256)) public licenseRewardDebt;
 
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -77,6 +93,17 @@ contract Distributor is ReentrancyGuard {
         bool selfBlocked
     );
     event Claimed(address indexed owner, address indexed to, uint256 amount);
+    event LicenseContractsSet(address indexed registry, address indexed licenseNFT);
+    event LicenseHolderBpsSet(uint16 bps);
+    event LicenseRewardsAccrued(
+        uint256 indexed buildId,
+        uint256 indexed licenseId,
+        uint256 amount,
+        uint256 totalSupply
+    );
+    event LicenseRewardsSynced(
+        uint256 indexed licenseId, address indexed account, uint256 newlyAccrued, uint256 debtAfter
+    );
 
     constructor(address blox_, address owner_) {
         require(blox_ != address(0), "BLOX=0");
@@ -150,6 +177,20 @@ contract Distributor is ReentrancyGuard {
         require(protocolTreasury_ != address(0), "treasury=0");
         protocolTreasury = protocolTreasury_;
         emit ProtocolTreasurySet(protocolTreasury_);
+    }
+
+    function setLicenseContracts(address licenseRegistry_, address licenseNFT_) external onlyOwner {
+        require(licenseRegistry_ != address(0), "registry=0");
+        require(licenseNFT_ != address(0), "licenseNFT=0");
+        licenseRegistry = licenseRegistry_;
+        licenseNFT = licenseNFT_;
+        emit LicenseContractsSet(licenseRegistry_, licenseNFT_);
+    }
+
+    function setLicenseHolderBps(uint16 bps) external onlyOwner {
+        require(bps <= 10_000, "bps");
+        licenseHolderBps = bps;
+        emit LicenseHolderBpsSet(bps);
     }
 
     // -------- view helpers --------
@@ -313,10 +354,61 @@ contract Distributor is ReentrancyGuard {
                 ethOwed[protocolTreasury] += amount;
                 emit UsageAccrued(buildIds[i], payer, address(0), amount, false);
             } else {
-                ethOwed[owners[i]] += amount;
-                emit UsageAccrued(buildIds[i], payer, owners[i], amount, false);
+                uint256 ownerAmount = amount;
+                if (
+                    licenseHolderBps > 0 && licenseRegistry != address(0)
+                        && licenseNFT != address(0)
+                ) {
+                    uint256 licenseAmount = (amount * licenseHolderBps) / 10_000;
+                    if (licenseAmount > 0) {
+                        ownerAmount -= licenseAmount;
+                        _accrueLicenseRewards(buildIds[i], licenseAmount);
+                    }
+                }
+                ethOwed[owners[i]] += ownerAmount;
+                emit UsageAccrued(buildIds[i], payer, owners[i], ownerAmount, false);
             }
         }
+    }
+
+    function _accrueLicenseRewards(uint256 buildId, uint256 amount) internal {
+        uint256 licenseId;
+        try ILicenseRegistryView(licenseRegistry).licenseIdForBuild(buildId) returns (uint256 id) {
+            licenseId = id;
+        } catch {
+            ethOwed[protocolTreasury] += amount;
+            return;
+        }
+
+        if (licenseId == 0) {
+            ethOwed[protocolTreasury] += amount;
+            return;
+        }
+
+        uint256 supply;
+        try ILicenseNFTView(licenseNFT).totalSupply(licenseId) returns (uint256 s) {
+            supply = s;
+        } catch {
+            ethOwed[protocolTreasury] += amount;
+            return;
+        }
+
+        if (supply == 0) {
+            ethOwed[protocolTreasury] += amount;
+            return;
+        }
+
+        uint256 pool = licenseRewardCarry[licenseId] + amount;
+        uint256 deltaAcc = (pool * LICENSE_ACC) / supply;
+        if (deltaAcc == 0) {
+            licenseRewardCarry[licenseId] = pool;
+            return;
+        }
+
+        accEthPerLicense[licenseId] += deltaAcc;
+        uint256 distributed = (deltaAcc * supply) / LICENSE_ACC;
+        licenseRewardCarry[licenseId] = pool - distributed;
+        emit LicenseRewardsAccrued(buildId, licenseId, amount, supply);
     }
 
     function _componentWeight(uint256 buildId, address payer, uint256 complexity)
@@ -406,20 +498,103 @@ contract Distributor is ReentrancyGuard {
     }
 
     function claim() external nonReentrant {
-        uint256 amt = ethOwed[msg.sender];
-        require(amt > 0, "nothing");
-        ethOwed[msg.sender] = 0;
-        (bool ok,) = msg.sender.call{value: amt}("");
-        require(ok, "eth xfer");
-        emit Claimed(msg.sender, msg.sender, amt);
+        _claim(msg.sender, msg.sender);
     }
 
     function claimTo(address to) external nonReentrant {
-        uint256 amt = ethOwed[msg.sender];
+        _claim(msg.sender, to);
+    }
+
+    function syncLicenseRewards(uint256[] calldata licenseIds) external {
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            _syncLicenseAccount(msg.sender, licenseIds[i]);
+        }
+    }
+
+    function pendingLicenseRewards(address account, uint256[] calldata licenseIds)
+        external
+        view
+        returns (uint256 total, uint256[] memory perId)
+    {
+        perId = new uint256[](licenseIds.length);
+        if (licenseNFT == address(0)) {
+            return (0, perId);
+        }
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            uint256 id = licenseIds[i];
+            uint256 acc = accEthPerLicense[id];
+            uint256 bal = ILicenseNFTView(licenseNFT).balanceOf(account, id);
+            uint256 accrued = (bal * acc) / LICENSE_ACC;
+            uint256 debt = licenseRewardDebt[id][account];
+            if (accrued > debt) {
+                uint256 pending = accrued - debt;
+                perId[i] = pending;
+                total += pending;
+            }
+        }
+    }
+
+    function claimLicenseRewards(uint256[] calldata licenseIds) external nonReentrant {
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            _syncLicenseAccount(msg.sender, licenseIds[i]);
+        }
+        _claim(msg.sender, msg.sender);
+    }
+
+    function claimLicenseRewardsTo(address to, uint256[] calldata licenseIds) external nonReentrant {
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            _syncLicenseAccount(msg.sender, licenseIds[i]);
+        }
+        _claim(msg.sender, to);
+    }
+
+    modifier onlyLicenseNFT() {
+        require(msg.sender == licenseNFT, "only licenseNFT");
+        _;
+    }
+
+    function onLicenseTransferBefore(address from, address to, uint256[] calldata ids)
+        external
+        onlyLicenseNFT
+    {
+        for (uint256 i = 0; i < ids.length; i++) {
+            _syncLicenseAccount(from, ids[i]);
+            _syncLicenseAccount(to, ids[i]);
+        }
+    }
+
+    function onLicenseTransferAfter(address from, address to, uint256[] calldata ids)
+        external
+        onlyLicenseNFT
+    {
+        for (uint256 i = 0; i < ids.length; i++) {
+            _syncLicenseAccount(from, ids[i]);
+            _syncLicenseAccount(to, ids[i]);
+        }
+    }
+
+    function _syncLicenseAccount(address account, uint256 licenseId) internal {
+        if (account == address(0) || licenseId == 0 || licenseNFT == address(0)) return;
+        uint256 acc = accEthPerLicense[licenseId];
+        uint256 bal = ILicenseNFTView(licenseNFT).balanceOf(account, licenseId);
+        uint256 accrued = (bal * acc) / LICENSE_ACC;
+        uint256 debt = licenseRewardDebt[licenseId][account];
+        if (accrued > debt) {
+            uint256 delta = accrued - debt;
+            ethOwed[account] += delta;
+            emit LicenseRewardsSynced(licenseId, account, delta, accrued);
+        } else {
+            emit LicenseRewardsSynced(licenseId, account, 0, accrued);
+        }
+        licenseRewardDebt[licenseId][account] = accrued;
+    }
+
+    function _claim(address owner_, address to) internal {
+        uint256 amt = ethOwed[owner_];
         require(amt > 0, "nothing");
-        ethOwed[msg.sender] = 0;
+        ethOwed[owner_] = 0;
         (bool ok,) = to.call{value: amt}("");
         require(ok, "eth xfer");
-        emit Claimed(msg.sender, to, amt);
+        emit Claimed(owner_, to, amt);
     }
 }

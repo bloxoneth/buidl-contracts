@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Distributor} from "src/Distributor.sol";
+import {LicenseNFT} from "src/LicenseNFT.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
 contract MockBuildNFT {
@@ -50,20 +51,33 @@ contract MockBuildNFT {
     }
 }
 
+contract MockLicenseRegistryForDistributor {
+    mapping(uint256 => uint256) public licenseIdForBuild;
+
+    function setLicenseIdForBuild(uint256 buildId, uint256 licenseId) external {
+        licenseIdForBuild[buildId] = licenseId;
+    }
+}
+
 contract DistributorUsageFeesTest is Test {
     Distributor private distributor;
     MockBuildNFT private buildNFT;
+    LicenseNFT private licenseNFT;
+    MockLicenseRegistryForDistributor private licenseRegistry;
     ERC20Mock private blox;
 
     address private alice = address(0xA11CE);
     address private bob = address(0xB0B);
     address private carol = address(0xCA11);
+    address private dave = address(0xDA7E);
     address private protocolTreasury = address(0xBEEF);
 
     function setUp() public {
         blox = new ERC20Mock();
         distributor = new Distributor(address(blox), address(this));
         buildNFT = new MockBuildNFT();
+        licenseNFT = new LicenseNFT("ipfs://licenses/{id}.json");
+        licenseRegistry = new MockLicenseRegistryForDistributor();
 
         buildNFT.setOwner(1, alice, 2 ether);
         buildNFT.setOwner(2, bob, 1 ether);
@@ -72,10 +86,13 @@ contract DistributorUsageFeesTest is Test {
         buildNFT.setDistributor(payable(address(distributor)));
         distributor.setBuildNFT(address(buildNFT));
         distributor.setProtocolTreasury(protocolTreasury);
+        distributor.setLicenseContracts(address(licenseRegistry), address(licenseNFT));
+        licenseNFT.setDistributor(address(distributor));
 
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
         vm.deal(carol, 10 ether);
+        vm.deal(dave, 10 ether);
     }
 
     function testAccrueSplitsByCountsAndTracksUniqueUsers() public {
@@ -195,5 +212,87 @@ contract DistributorUsageFeesTest is Test {
         assertEq(aliceDelta + treasuryDelta, value);
         assertTrue(aliceDelta > 0);
         assertTrue(treasuryDelta > 0);
+    }
+
+    function testLicenseHoldersAccrueAndClaimShare() public {
+        distributor.setLicenseHolderBps(5_000); // 50% of component-owner slice
+
+        uint256 buildId = 1;
+        uint256 licenseId = 11;
+        licenseRegistry.setLicenseIdForBuild(buildId, licenseId);
+
+        licenseNFT.setRegistry(address(this));
+        licenseNFT.setMaxSupply(licenseId, 10);
+        licenseNFT.mint(bob, licenseId, 1);
+        licenseNFT.mint(carol, licenseId, 1);
+
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory counts = new uint256[](1);
+        ids[0] = buildId;
+        counts[0] = 1;
+
+        address payer = address(0xD00D);
+        vm.deal(payer, 1 ether);
+        vm.prank(payer);
+        buildNFT.accrue{value: 1 ether}(ids, counts, payer, 10, 1);
+
+        // Single component => 1 ETH goes to its route.
+        // With 50% split: 0.5 ETH to owner (alice), 0.5 ETH to license pool.
+        assertEq(distributor.ethOwed(alice), 0.5 ether);
+
+        uint256[] memory licenseIds = new uint256[](1);
+        licenseIds[0] = licenseId;
+        (uint256 totalBob,) = distributor.pendingLicenseRewards(bob, licenseIds);
+        (uint256 totalCarol,) = distributor.pendingLicenseRewards(carol, licenseIds);
+        assertEq(totalBob, 0.25 ether);
+        assertEq(totalCarol, 0.25 ether);
+
+        uint256 bobBefore = bob.balance;
+        vm.prank(bob);
+        distributor.claimLicenseRewards(licenseIds);
+        assertEq(bob.balance, bobBefore + 0.25 ether);
+    }
+
+    function testLicenseTransferChangesFutureAccrualOnly() public {
+        distributor.setLicenseHolderBps(5_000);
+
+        uint256 buildId = 1;
+        uint256 licenseId = 11;
+        licenseRegistry.setLicenseIdForBuild(buildId, licenseId);
+
+        licenseNFT.setRegistry(address(this));
+        licenseNFT.setMaxSupply(licenseId, 10);
+        licenseNFT.mint(bob, licenseId, 1);
+        licenseNFT.mint(carol, licenseId, 1);
+
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory counts = new uint256[](1);
+        ids[0] = buildId;
+        counts[0] = 1;
+        uint256[] memory licenseIds = new uint256[](1);
+        licenseIds[0] = licenseId;
+
+        // Round 1: bob+carol each earn 0.25
+        address payer = address(0xD00D);
+        vm.deal(payer, 2 ether);
+        vm.prank(payer);
+        buildNFT.accrue{value: 1 ether}(ids, counts, payer, 10, 1);
+
+        // Transfer bob's license to dave
+        vm.prank(bob);
+        licenseNFT.safeTransferFrom(bob, dave, licenseId, 1, "");
+
+        // Round 2: dave+carol each earn 0.25
+        vm.prank(payer);
+        buildNFT.accrue{value: 1 ether}(ids, counts, payer, 10, 1);
+
+        (uint256 bobPending,) = distributor.pendingLicenseRewards(bob, licenseIds);
+        (uint256 carolPending,) = distributor.pendingLicenseRewards(carol, licenseIds);
+        (uint256 davePending,) = distributor.pendingLicenseRewards(dave, licenseIds);
+
+        assertEq(bobPending, 0); // already crystallized into ethOwed via transfer hooks
+        assertEq(distributor.ethOwed(bob), 0.25 ether);
+        assertEq(carolPending, 0.5 ether);
+        assertEq(davePending, 0.25 ether);
     }
 }
