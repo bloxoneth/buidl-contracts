@@ -50,10 +50,10 @@ function loadData(dataPath) {
 
 function buildMetadata(id, base, imageBase, data) {
   const defaults = {
-    name: `ETHBLOX #${id}`,
-    description: "ETHBLOX build/brick",
+    name: `BUIDL #${id}`,
+    description: "BUIDL build/brick",
     image: `${imageBase}/${id}.png`,
-    external_url: "https://ethblox.art",
+    external_url: "https://buidl.art",
     geometryHash: "0x",
     kind: 1,
     mass: 1,

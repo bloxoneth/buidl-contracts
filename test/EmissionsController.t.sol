@@ -84,12 +84,14 @@ contract EmissionsControllerTest is Test {
 
     function testLockCoupledEmissionTracksPriorLocksAfterWarmup() public {
         c.recordLock(10_000_000e18);
-        vm.warp(block.timestamp + 1 days);
+        uint256 t = block.timestamp + 1 days;
+        vm.warp(t);
         c.rollToCurrentEpoch();
 
         for (uint256 i = 0; i < 30; i++) {
             c.recordFlows(150_000e18, 50_000e18, 2_000e18);
-            vm.warp(block.timestamp + 1 days);
+            t += 1 days;
+            vm.warp(t);
             c.rollToCurrentEpoch();
         }
 

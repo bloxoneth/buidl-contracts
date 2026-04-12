@@ -13,7 +13,7 @@ interface IDistributorLicenseSync {
 }
 
 contract LicenseNFT is ERC1155, ERC1155Supply, Ownable {
-    string public constant name = "ETHBLOX License";
+    string public constant name = "BUIDL License";
     string public constant symbol = "BLICENSE";
 
     address public registry;

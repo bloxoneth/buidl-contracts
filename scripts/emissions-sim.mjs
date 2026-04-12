@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 const DEFAULT_CONTRACTS = path.resolve(
   process.cwd(),
   "..",
-  "ethblox-app",
+  "buidl-app",
   "data",
   "sim-runs",
   "local-reseed-8545",

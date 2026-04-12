@@ -7,7 +7,7 @@ import { ethers } from "ethers";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONTRACTS_ROOT = path.resolve(__dirname, "..");
-const APP_ROOT = path.resolve(CONTRACTS_ROOT, "..", "ethblox-app");
+const APP_ROOT = path.resolve(CONTRACTS_ROOT, "..", "buidl-app");
 
 const DENSITIES = [1, 8, 27, 64, 125];
 const MAX_SIDE = 10;
@@ -587,7 +587,7 @@ async function main() {
     const shape = generateShape(rand, randInt(rand, 8, 14), randInt(rand, 8, 14));
     const metadata = {
       tokenId: rec.tokenId,
-      name: `ETHBLOX Build #${rec.tokenId}`,
+      name: `BUIDL Build #${rec.tokenId}`,
       description: "Protocol simulation artifact",
       kind: rec.kind,
       density: rec.density,

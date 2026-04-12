@@ -6,7 +6,7 @@ const DEFAULT_CSV = path.resolve(process.cwd(), "..", "BW_converted.csv");
 const DEFAULT_CONTRACTS = path.resolve(
   process.cwd(),
   "..",
-  "ethblox-app",
+  "buidl-app",
   "data",
   "sim-runs",
   "local-reseed-8545",

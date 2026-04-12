@@ -121,15 +121,13 @@ contract LicenseRegistryTest is Test {
         blox = new ERC20Mock();
 
         // Deploy registry with treasury
-        registry = new LicenseRegistry(address(build), address(licenseNFT), treasury, address(blox));
+        registry = new LicenseRegistry(address(build), address(licenseNFT), treasury);
 
         // Wire permissions: only registry can mint + set max supply
         licenseNFT.setRegistry(address(registry));
 
-        // Fund buyer with BLOX + approval to pay registry
-        blox.mint(buyer, 100 ether);
-        vm.prank(buyer);
-        blox.approve(address(registry), type(uint256).max);
+        // Fund buyer with ETH
+        vm.deal(buyer, 100 ether);
         vm.deal(address(this), 100 ether);
     }
 
@@ -224,45 +222,40 @@ contract LicenseRegistryTest is Test {
         assertEq(q, expected);
     }
 
-    function testMintLicenseForBuildMintsAndTransfersBloxToTreasury() public {
+    function testMintLicenseForBuildMintsAndTransfersETHToTreasury() public {
         vm.prank(buildOwner);
         registry.registerBuild(buildId, geo);
 
         uint256 licenseId = registry.licenseIdForBuild(buildId);
         uint256 price = registry.quote(buildId, 2);
 
-        uint256 treasuryBefore = blox.balanceOf(treasury);
-        uint256 lpBefore = registry.lpBudgetBalance();
+        uint256 treasuryBefore = treasury.balance;
 
         vm.prank(buyer);
-        registry.mintLicenseForBuild(buildId, 2);
+        registry.mintLicenseForBuild{value: price}(buildId, 2);
 
         // Buyer received ERC1155 licenses
         assertEq(licenseNFT.balanceOf(buyer, licenseId), 2);
         assertEq(licenseNFT.balanceOf(creator, licenseId), 1);
 
-        assertEq(blox.balanceOf(treasury), treasuryBefore + price);
-        assertEq(registry.lpBudgetBalance(), lpBefore);
+        assertEq(treasury.balance, treasuryBefore + price);
     }
 
-    function testMintLicenseForBuildRevertsOnInsufficientBlox() public {
+    function testMintLicenseForBuildRevertsOnInsufficientETH() public {
         vm.prank(buildOwner);
         registry.registerBuild(buildId, geo);
 
-        uint256 bal = blox.balanceOf(buyer);
         vm.prank(buyer);
-        blox.transfer(address(0xdead), bal);
-
-        vm.prank(buyer);
-        vm.expectRevert();
-        registry.mintLicenseForBuild(buildId, 2);
+        vm.expectRevert(bytes("insufficient ETH"));
+        registry.mintLicenseForBuild{value: 0}(buildId, 2);
     }
 
     function testMintLicenseForBuildAutoRegistersOnFirstAttempt() public {
         assertEq(registry.licenseIdForBuild(buildId), 0);
 
+        uint256 price = registry.quote(buildId, 1);
         vm.prank(buyer);
-        registry.mintLicenseForBuild(buildId, 1);
+        registry.mintLicenseForBuild{value: price}(buildId, 1);
 
         uint256 licenseId = registry.licenseIdForBuild(buildId);
         assertTrue(licenseId > 0);
@@ -276,9 +269,10 @@ contract LicenseRegistryTest is Test {
 
         build.setBurned(buildId, true);
 
+        uint256 price = registry.quote(buildId, 1);
         vm.prank(buyer);
         vm.expectRevert(bytes("build burned"));
-        registry.mintLicenseForBuild(buildId, 1);
+        registry.mintLicenseForBuild{value: price}(buildId, 1);
     }
 
     function testQuoteWorksBeforeRegistration() public {
@@ -292,7 +286,7 @@ contract LicenseRegistryTest is Test {
         registry.registerBuild(buildId, geo);
         uint256 licenseId = registry.licenseIdForBuild(buildId);
         (, , uint256 maxSupply,) = registry.pricingForLicense(licenseId);
-        assertEq(maxSupply, 10_000_000 / (mass * 8));
+        assertEq(maxSupply, 10_000_000 / mass);
     }
 
     function testRebalanceGuards_Interval() public {

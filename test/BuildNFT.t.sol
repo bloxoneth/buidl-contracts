@@ -6,10 +6,12 @@ import {BuildNFT} from "src/BuildNFT.sol";
 import {Distributor} from "src/Distributor.sol";
 import {LicenseNFT} from "src/LicenseNFT.sol";
 import {LicenseRegistry} from "src/LicenseRegistry.sol";
+import {GeometryRegistry} from "src/GeometryRegistry.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
 contract BuildNFTTest is Test {
     BuildNFT private buildNFT;
+    GeometryRegistry private geometryRegistry;
     LicenseNFT private licenseNFT;
     LicenseRegistry private licenseRegistry;
     ERC20Mock private blox;
@@ -36,7 +38,7 @@ contract BuildNFTTest is Test {
         distributor = new Distributor(address(blox), address(this));
         licenseNFT = new LicenseNFT("ipfs://licenses");
         licenseRegistry =
-            new LicenseRegistry(predictedBuild, address(licenseNFT), protocolTreasury, address(blox));
+            new LicenseRegistry(predictedBuild, address(licenseNFT), protocolTreasury);
         buildNFT = new BuildNFT(
             address(blox),
             address(distributor),
@@ -46,6 +48,9 @@ contract BuildNFTTest is Test {
             address(licenseNFT),
             1_000
         );
+        geometryRegistry = new GeometryRegistry(address(this));
+        geometryRegistry.setBuildNFT(address(buildNFT));
+        buildNFT.setGeometryRegistry(address(geometryRegistry));
         licenseNFT.setRegistry(address(licenseRegistry));
         distributor.setBuildNFT(address(buildNFT));
         distributor.setProtocolTreasury(protocolTreasury);
@@ -55,12 +60,6 @@ contract BuildNFTTest is Test {
         blox.transfer(alice, 1_000 ether);
         blox.transfer(bob, 1_000 ether);
         blox.transfer(carol, 1_000 ether);
-        vm.prank(alice);
-        blox.approve(address(licenseRegistry), type(uint256).max);
-        vm.prank(bob);
-        blox.approve(address(licenseRegistry), type(uint256).max);
-        vm.prank(carol);
-        blox.approve(address(licenseRegistry), type(uint256).max);
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
         vm.deal(carol, 10 ether);
@@ -105,9 +104,6 @@ contract BuildNFTTest is Test {
         uint8 depth,
         uint16 density
     ) internal returns (uint256 tokenId) {
-        if (kind == KIND_BRICK) {
-            geo = _brickGeo(width, depth, density);
-        }
         if (kind > KIND_BRICK) {
             _unlockBuildKinds();
         }
@@ -125,10 +121,16 @@ contract BuildNFTTest is Test {
         }
         uint256 lockAmount = mass * BLOX_PER_MASS;
 
+        // Calculate license costs for components
+        uint256 licenseCost;
+        for (uint256 i = 0; i < ids.length; i++) {
+            licenseCost += licenseRegistry.quote(ids[i], counts[i]);
+        }
+
         vm.startPrank(minter);
         blox.approve(address(buildNFT), lockAmount);
-        tokenId = buildNFT.mint{value: buildNFT.FEE_PER_MINT()}(
-            geo, mass, "ipfs://test", ids, counts, kind, width, depth, density
+        tokenId = buildNFT.mint{value: buildNFT.FEE_PER_MINT() + licenseCost}(
+            geo, mass, "", ids, counts, new BuildNFT.PlacedComponent[](0), kind, width, depth, density
         );
         vm.stopPrank();
     }
@@ -144,8 +146,9 @@ contract BuildNFTTest is Test {
                 licenseId = licenseRegistry.licenseIdForBuild(componentId);
             }
             if (licenseNFT.balanceOf(minter, licenseId) == 0) {
+                uint256 price = licenseRegistry.quote(componentId, 1);
                 vm.prank(minter);
-                licenseRegistry.mintLicenseForBuild(componentId, 1);
+                licenseRegistry.mintLicenseForBuild{value: price}(componentId, 1);
             }
         }
         if (!licenseNFT.isApprovedForAll(minter, address(buildNFT))) {
@@ -179,7 +182,7 @@ contract BuildNFTTest is Test {
         if (licenseNFT.balanceOf(minter, defaultComponentLicenseId) == 0) {
             uint256 price = licenseRegistry.quote(defaultComponentId, 1);
             vm.prank(minter);
-            licenseRegistry.mintLicenseForBuild(defaultComponentId, 1);
+            licenseRegistry.mintLicenseForBuild{value: price}(defaultComponentId, 1);
         }
 
         if (!licenseNFT.isApprovedForAll(minter, address(buildNFT))) {
@@ -249,9 +252,9 @@ contract BuildNFTTest is Test {
         }
     }
 
-    function _brickGeo(uint8 width, uint8 depth, uint16 density) internal pure returns (bytes32) {
+    function _brickGeo(uint8 width, uint8 depth) internal pure returns (bytes32) {
         (uint8 w, uint8 d) = width <= depth ? (width, depth) : (depth, width);
-        return keccak256(abi.encodePacked(w, d, density));
+        return keccak256(abi.encodePacked(w, d));
     }
 
     function _signReservation(uint256 authorPk, BuildNFT.MintReservation memory rsv)
@@ -269,10 +272,11 @@ contract BuildNFTTest is Test {
         uint256 mass = 5;
 
         uint256 tokenId = _mintBuildAsAlice(geo, mass);
-        assertTrue(buildNFT.geometryConsumed(geo));
+        assertTrue(geometryRegistry.hashConsumed(geo));
 
+        uint256 burnFee = buildNFT.BURN_FEE();
         vm.prank(alice);
-        buildNFT.burn{value: 0.005 ether}(tokenId);
+        buildNFT.burn{value: burnFee}(tokenId);
 
         uint256 fee = buildNFT.FEE_PER_MINT();
 
@@ -280,7 +284,7 @@ contract BuildNFTTest is Test {
         blox.approve(address(buildNFT), mass * BLOX_PER_MASS);
         vm.expectRevert(bytes("geometry consumed"));
         buildNFT.mint{value: fee}(
-            geo, mass, "ipfs://test", new uint256[](0), new uint256[](0), KIND_BUILD, 0, 0, 1
+            geo, mass, "", new uint256[](0), new uint256[](0), new BuildNFT.PlacedComponent[](0), KIND_BUILD, 0, 0, 1
         );
         vm.stopPrank();
     }
@@ -318,9 +322,10 @@ contract BuildNFTTest is Test {
         });
         bytes memory sig = _signReservation(authorPk, rsv);
 
+        uint256 licenseCost = licenseRegistry.quote(defaultComponentId, 1);
         vm.startPrank(alice);
         blox.approve(address(buildNFT), mass * BLOX_PER_MASS);
-        uint256 tokenId = buildNFT.mintWithReservation{value: buildNFT.FEE_PER_MINT()}(
+        uint256 tokenId = buildNFT.mintWithReservation{value: buildNFT.FEE_PER_MINT() + licenseCost}(
             rsv,
             uri,
             componentTokenIds,
@@ -366,9 +371,10 @@ contract BuildNFTTest is Test {
         });
         bytes memory sig = _signReservation(authorPk, rsv);
 
+        uint256 licenseCost = licenseRegistry.quote(defaultComponentId, 1);
         vm.startPrank(alice);
         blox.approve(address(buildNFT), mass * BLOX_PER_MASS * 2);
-        buildNFT.mintWithReservation{value: buildNFT.FEE_PER_MINT()}(
+        buildNFT.mintWithReservation{value: buildNFT.FEE_PER_MINT() + licenseCost}(
             rsv,
             uri,
             componentTokenIds,
@@ -378,7 +384,7 @@ contract BuildNFTTest is Test {
 
         uint256 fee = buildNFT.FEE_PER_MINT();
         vm.expectRevert(bytes("reservation used"));
-        buildNFT.mintWithReservation{value: fee}(
+        buildNFT.mintWithReservation{value: fee + licenseCost}(
             rsv,
             uri,
             componentTokenIds,
@@ -485,8 +491,8 @@ contract BuildNFTTest is Test {
 
         _mintBrickAs(alice, geo, 1, 1, 1, 1);
 
-        uint256 liquidityCut = (fee * 30) / 100;
-        uint256 treasuryCut = (fee * 30) / 100;
+        uint256 liquidityCut = (fee * buildNFT.liquidityBps()) / 10_000;
+        uint256 treasuryCut = (fee * buildNFT.treasuryBps()) / 10_000;
         uint256 ownersCut = fee - liquidityCut - treasuryCut;
 
         assertEq(liquidityReceiver.balance, liquidityBefore + liquidityCut);
@@ -504,7 +510,7 @@ contract BuildNFTTest is Test {
 
         uint256 licensePrice = licenseRegistry.quote(componentId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -512,6 +518,7 @@ contract BuildNFTTest is Test {
         componentTokenIds[0] = componentId;
 
         uint256 fee = buildNFT.FEE_PER_MINT();
+        uint256 lCost = licenseRegistry.quote(componentId, 1);
         uint256 liquidityBefore = liquidityReceiver.balance;
         uint256 treasuryBefore = protocolTreasury.balance;
         uint256 bobAccruedBefore = distributor.ethOwed(bob);
@@ -519,12 +526,13 @@ contract BuildNFTTest is Test {
 
         _mintBuildAs(alice, keccak256("geo-fee-components"), 5, componentTokenIds, _ones(1));
 
-        uint256 liquidityCut = (fee * 30) / 100;
-        uint256 treasuryCut = (fee * 30) / 100;
+        uint256 liquidityCut = (fee * buildNFT.liquidityBps()) / 10_000;
+        uint256 treasuryCut = (fee * buildNFT.treasuryBps()) / 10_000;
         uint256 ownersCut = fee - liquidityCut - treasuryCut;
 
         assertEq(liquidityReceiver.balance, liquidityBefore + liquidityCut);
-        assertEq(protocolTreasury.balance, treasuryBefore + treasuryCut);
+        // License fees go directly to treasury via LicenseRegistry
+        assertEq(protocolTreasury.balance, treasuryBefore + treasuryCut + lCost);
         assertEq(distributor.ethOwed(bob), bobAccruedBefore + ownersCut);
         assertEq(distributor.ethOwed(protocolTreasury), treasuryAccruedBefore);
     }
@@ -545,9 +553,9 @@ contract BuildNFTTest is Test {
         uint256 priceA = licenseRegistry.quote(buildA, 1);
         uint256 priceB = licenseRegistry.quote(buildB, 1);
         vm.prank(carol);
-        licenseRegistry.mintLicenseForBuild(buildA, 1);
+        licenseRegistry.mintLicenseForBuild{value: priceA}(buildA, 1);
         vm.prank(carol);
-        licenseRegistry.mintLicenseForBuild(buildB, 1);
+        licenseRegistry.mintLicenseForBuild{value: priceB}(buildB, 1);
         vm.prank(carol);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -560,8 +568,9 @@ contract BuildNFTTest is Test {
 
         _mintBuildAs(carol, keccak256("geo-weight-mix"), 4, componentTokenIds, _ones(2));
 
-        uint256 ownersCut = buildNFT.FEE_PER_MINT() - (buildNFT.FEE_PER_MINT() * 30) / 100
-            - (buildNFT.FEE_PER_MINT() * 30) / 100;
+        uint256 ownersCut = buildNFT.FEE_PER_MINT()
+            - (buildNFT.FEE_PER_MINT() * buildNFT.liquidityBps()) / 10_000
+            - (buildNFT.FEE_PER_MINT() * buildNFT.treasuryBps()) / 10_000;
         uint256 bobDelta = distributor.ethOwed(bob) - bobAccruedBefore;
         uint256 aliceDelta = distributor.ethOwed(alice) - aliceAccruedBefore;
 
@@ -581,7 +590,7 @@ contract BuildNFTTest is Test {
 
         uint256 licensePrice = licenseRegistry.quote(componentId, 1);
         vm.prank(bob);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
         vm.prank(bob);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -589,8 +598,8 @@ contract BuildNFTTest is Test {
         componentTokenIds[0] = componentId;
 
         uint256 fee = buildNFT.FEE_PER_MINT();
-        uint256 liquidityCut = (fee * 30) / 100;
-        uint256 treasuryCut = (fee * 30) / 100;
+        uint256 liquidityCut = (fee * buildNFT.liquidityBps()) / 10_000;
+        uint256 treasuryCut = (fee * buildNFT.treasuryBps()) / 10_000;
         uint256 ownersCut = fee - liquidityCut - treasuryCut;
 
         uint256 bobAccruedBefore = distributor.ethOwed(bob);
@@ -603,37 +612,41 @@ contract BuildNFTTest is Test {
     }
 
     function testBrickNotBurnable() public {
-        uint256 tokenId = _mintComposedBrickAs(alice, keccak256("geo-brick"), 1, 2, 4, 27);
+        uint256 tokenId = _mintComposedBrickAs(alice, keccak256("geo-brick"), 1, 2, 4, 1);
 
+        uint256 burnFee = buildNFT.BURN_FEE();
         vm.prank(alice);
         vm.expectRevert(bytes("brick"));
-        buildNFT.burn{value: 0.005 ether}(tokenId);
+        buildNFT.burn{value: burnFee}(tokenId);
     }
 
     function testBrickSpecStoredAndKey() public {
         bytes32 geo = keccak256("geo-brick-spec");
-        uint256 tokenId = _mintComposedBrickAs(alice, geo, 1, 2, 4, 27);
+        uint256 tokenId = _mintComposedBrickAs(alice, geo, 1, 2, 4, 1);
         (uint8 width, uint8 depth, uint16 density) = buildNFT.brickSpecOf(tokenId);
         assertEq(width, 2);
         assertEq(depth, 4);
-        assertEq(density, 27);
+        assertEq(density, 1);
+        // Spec key is keccak256(canonical_w, canonical_d) — no geo hash, no density
         assertEq(
             buildNFT.brickSpecKeyOf(tokenId),
-            keccak256(abi.encodePacked(uint8(2), uint8(4), uint16(27)))
+            keccak256(abi.encodePacked(uint8(2), uint8(4)))
         );
     }
 
     function testBrickSpecUnique() public {
         bytes32 geo = keccak256("geo-brick-spec-1");
-        uint256 componentId = _mintBrickAs(alice, keccak256("geo-brick-spec-1-gen"), 1, 1, 1, 27);
+        uint256 componentId = _mintBrickAs(alice, keccak256("geo-brick-spec-1-gen"), 1, 1, 1, 1);
         uint256[] memory firstComponentIds = new uint256[](1);
         firstComponentIds[0] = componentId;
         uint256[] memory firstComponentCounts = new uint256[](1);
         firstComponentCounts[0] = 8;
-        _mintAs(alice, geo, 1, firstComponentIds, firstComponentCounts, KIND_BRICK, 2, 4, 27);
-        bytes32 specKey = keccak256(abi.encodePacked(uint8(2), uint8(4), uint16(27)));
+        _mintAs(alice, geo, 1, firstComponentIds, firstComponentCounts, KIND_BRICK, 2, 4, 1);
+        bytes32 specKey = keccak256(abi.encodePacked(uint8(2), uint8(4)));
         assertTrue(buildNFT.brickSpecConsumed(specKey));
 
+        // Same dims (2x4) with different geo should revert — one brick per (w,d)
+        uint256 licenseCost = licenseRegistry.quote(componentId, 8);
         uint256 fee = buildNFT.FEE_PER_MINT();
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
@@ -643,64 +656,92 @@ contract BuildNFTTest is Test {
         vm.startPrank(bob);
         blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
         vm.expectRevert(bytes("brick spec used"));
-        buildNFT.mint{value: fee}(
-            _brickGeo(2, 4, 27),
+        buildNFT.mint{value: fee + licenseCost}(
+            keccak256("different-geo"),
             1,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BRICK,
             2,
             4,
-            27
+            1
         );
         vm.stopPrank();
     }
 
-    function testBrickSpecDensityVariantsAllowed() public {
-        bytes32 geo = keccak256("geo-brick-variants");
-        _mintComposedBrickAs(alice, geo, 1, 2, 4, 1);
-        _mintComposedBrickAs(bob, geo, 1, 2, 4, 8);
+    function testBrickSpecSameDimsRevertsEvenWithDifferentGeo() public {
+        // Mint a 1x1 genesis brick (will be used as component for both)
+        uint256 componentId = _mintBrickAs(alice, keccak256("geo-brick-variants-gen"), 1, 1, 1, 1);
 
-        bytes32 specKeyA = keccak256(abi.encodePacked(uint8(2), uint8(4), uint16(1)));
-        bytes32 specKeyB = keccak256(abi.encodePacked(uint8(2), uint8(4), uint16(8)));
-        assertTrue(buildNFT.brickSpecConsumed(specKeyA));
-        assertTrue(buildNFT.brickSpecConsumed(specKeyB));
+        // Mint a 2x4 brick using that component
+        uint256[] memory ids = new uint256[](1);
+        ids[0] = componentId;
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 8;
+        _mintAs(alice, keccak256("geo-brick-variants-a"), 1, ids, counts, KIND_BRICK, 2, 4, 1);
+
+        // Try to mint another 2x4 with a different geo hash — should revert
+        uint256 licenseCost = licenseRegistry.quote(componentId, 8);
+        vm.startPrank(bob);
+        blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
+        uint256 fee = buildNFT.FEE_PER_MINT();
+        vm.expectRevert(bytes("brick spec used"));
+        buildNFT.mint{value: fee + licenseCost}(
+            keccak256("geo-brick-variants-b"),
+            1,
+            "",
+            ids,
+            counts,
+            new BuildNFT.PlacedComponent[](0),
+            KIND_BRICK,
+            2,
+            4,
+            1
+        );
+        vm.stopPrank();
     }
 
-    function testBrickSpecGlobalUniquenessByWidthDepthDensity() public {
-        uint256 componentId = _mintBrickAs(alice, keccak256("geo-unique-a-gen"), 1, 1, 1, 27);
+    function testBrickSpecDifferentDimsAllowed() public {
+        // Mint a 2x3 brick
+        uint256 componentId = _mintBrickAs(alice, keccak256("geo-dims-a-gen"), 1, 1, 1, 1);
         uint256[] memory firstComponentTokenIds = new uint256[](1);
         firstComponentTokenIds[0] = componentId;
         uint256[] memory firstComponentCounts = new uint256[](1);
         firstComponentCounts[0] = 6;
-        _mintAs(alice, keccak256("geo-unique-a"), 1, firstComponentTokenIds, firstComponentCounts, KIND_BRICK, 2, 3, 27);
+        _mintAs(alice, keccak256("geo-dims-a"), 1, firstComponentTokenIds, firstComponentCounts, KIND_BRICK, 2, 3, 1);
 
+        // Mint a 3x4 brick — different dims, should succeed
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
         uint256[] memory componentCounts = new uint256[](1);
-        componentCounts[0] = 6;
+        componentCounts[0] = 12;
+
+        uint256 licenseCost = licenseRegistry.quote(componentId, 12);
         uint256 fee = buildNFT.FEE_PER_MINT();
 
         vm.startPrank(bob);
         blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
-        vm.expectRevert(bytes("brick spec used"));
-        buildNFT.mint{value: fee}(
-            _brickGeo(2, 3, 27),
+        uint256 tokenId = buildNFT.mint{value: fee + licenseCost}(
+            keccak256("geo-dims-b"),
             1,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BRICK,
-            2,
             3,
-            27
+            4,
+            1
         );
         vm.stopPrank();
+        assertEq(buildNFT.ownerOf(tokenId), bob);
     }
 
-    function testBrickSpecRotationEquivalentUniqueness() public {
-        uint256 componentId = _mintBrickAs(alice, keccak256("geo-rot-a-gen"), 1, 1, 1, 27);
+    function testBrickSpecRotationEquivalentReverts() public {
+        // Mint a 2x7 brick
+        uint256 componentId = _mintBrickAs(alice, keccak256("geo-rot-a-gen"), 1, 1, 1, 1);
         uint256[] memory firstComponentTokenIds = new uint256[](1);
         firstComponentTokenIds[0] = componentId;
         uint256[] memory firstComponentCounts = new uint256[](1);
@@ -714,86 +755,65 @@ contract BuildNFTTest is Test {
             KIND_BRICK,
             2,
             7,
-            27
+            1
         );
 
+        // Try 7x2 (rotated) — canonical dims are the same (2,7), should revert
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
         uint256[] memory componentCounts = new uint256[](1);
         componentCounts[0] = 14;
+        uint256 licenseCost = licenseRegistry.quote(componentId, 14);
         uint256 fee = buildNFT.FEE_PER_MINT();
 
         vm.startPrank(bob);
         blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
         vm.expectRevert(bytes("brick spec used"));
-        buildNFT.mint{value: fee}(
-            _brickGeo(7, 2, 27),
+        buildNFT.mint{value: fee + licenseCost}(
+            keccak256("geo-rot-b"),
             1,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BRICK,
             7,
-            2,
-            27
-        );
-        vm.stopPrank();
-    }
-
-    function testOnlyGenesisOneByOneCanMintWithoutComponents() public {
-        uint16[5] memory densities = [uint16(1), uint16(8), uint16(27), uint16(64), uint16(125)];
-        for (uint256 i = 0; i < densities.length; i++) {
-            _mintBrickAs(
-                alice,
-                keccak256(abi.encodePacked("geo-genesis", i)),
-                1,
-                1,
-                1,
-                densities[i]
-            );
-        }
-
-        vm.startPrank(alice);
-        blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
-        uint256 fee = buildNFT.FEE_PER_MINT();
-        vm.expectRevert(bytes("components required"));
-        buildNFT.mint{value: fee}(
-            _brickGeo(2, 2, 1),
-            1,
-            "ipfs://test",
-            new uint256[](0),
-            new uint256[](0),
-            KIND_BRICK,
-            2,
             2,
             1
         );
         vm.stopPrank();
     }
 
-    function testBrickMintRejectsNonCanonicalGeoHash() public {
-        uint256 componentId = _mintBrickAs(alice, keccak256("geo-bad-brick-gen"), 1, 1, 1, 27);
+    function testBricksCanMintWithoutComponents() public {
+        uint256 tokenId = _mintBrickAs(alice, keccak256("geo-direct-2x2"), 1, 2, 2, 1);
+        assertEq(buildNFT.ownerOf(tokenId), alice);
+    }
+
+    function testBrickMintAcceptsAnyGeoHash() public {
+        uint256 componentId = _mintBrickAs(alice, keccak256("geo-bad-brick-gen"), 1, 1, 1, 1);
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
         uint256[] memory componentCounts = new uint256[](1);
         componentCounts[0] = 6;
 
+        uint256 licenseCost = licenseRegistry.quote(componentId, 6);
         vm.startPrank(bob);
         blox.approve(address(buildNFT), 1 * BLOX_PER_MASS);
         uint256 fee = buildNFT.FEE_PER_MINT();
-        vm.expectRevert(bytes("bad brick geohash"));
-        buildNFT.mint{value: fee}(
+        uint256 tokenId = buildNFT.mint{value: fee + licenseCost}(
             keccak256("not-canonical"),
             1,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BRICK,
             2,
             3,
-            27
+            1
         );
         vm.stopPrank();
+        assertEq(buildNFT.ownerOf(tokenId), bob);
     }
 
     function testBuildMintRejectsNonZeroDimensions() public {
@@ -803,8 +823,9 @@ contract BuildNFTTest is Test {
 
         vm.prank(bob);
         licenseRegistry.registerBuild(componentId, keccak256("geo-non-brick-dims-component"));
+        uint256 licensePrice = licenseRegistry.quote(componentId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -820,9 +841,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             keccak256("geo-non-brick-dims"),
             4,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BUILD,
             2,
             2,
@@ -839,7 +861,7 @@ contract BuildNFTTest is Test {
         licenseRegistry.registerBuild(componentId, keccak256("geo-density-component"));
         uint256 licensePrice = licenseRegistry.quote(componentId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -851,19 +873,21 @@ contract BuildNFTTest is Test {
         vm.startPrank(alice);
         blox.approve(address(buildNFT), 10 * BLOX_PER_MASS);
         uint256 fee = buildNFT.FEE_PER_MINT();
-        vm.expectRevert(bytes("component density"));
-        buildNFT.mint{value: fee}(
+        uint256 mintLicenseCost = licenseRegistry.quote(componentId, 1);
+        uint256 tokenId = buildNFT.mint{value: fee + mintLicenseCost}(
             keccak256("geo-density-mismatch"),
             4,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BUILD,
             0,
             0,
-            8
+            1
         );
         vm.stopPrank();
+        assertEq(buildNFT.ownerOf(tokenId), alice);
     }
 
     function testBuildMintRequiresComponents() public {
@@ -878,9 +902,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             keccak256("geo-build-no-components"),
             4,
-            "ipfs://test",
+            "",
             emptyTokenIds,
             emptyCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_BUILD,
             0,
             0,
@@ -889,30 +914,27 @@ contract BuildNFTTest is Test {
         vm.stopPrank();
     }
 
-    function testBuildMintUsesOneLicensePerComponentType() public {
+    function testBuildMintUsesPerInstanceLicenses() public {
         uint256[] memory emptyTokenIds = new uint256[](0);
         uint256 componentId =
-            _mintBuildAs(bob, keccak256("geo-license-per-type-component"), 3, emptyTokenIds, _ones(0));
+            _mintBuildAs(bob, keccak256("geo-license-per-instance-component"), 3, emptyTokenIds, _ones(0));
 
         vm.prank(bob);
-        licenseRegistry.registerBuild(componentId, keccak256("geo-license-per-type-component"));
+        licenseRegistry.registerBuild(componentId, keccak256("geo-license-per-instance-component"));
 
         uint256 licenseId = licenseRegistry.licenseIdForBuild(componentId);
-        uint256 licensePrice = licenseRegistry.quote(componentId, 1);
-        vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
-        vm.prank(alice);
-        licenseNFT.setApprovalForAll(address(buildNFT), true);
-        assertEq(licenseNFT.balanceOf(alice, licenseId), 1);
 
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
         uint256[] memory componentCounts = new uint256[](1);
         componentCounts[0] = 6;
 
+        // License fees are paid in ETH during mint; _mintAs forwards licenseCost to BuildNFT
+        // which mints fresh licenses to itself for escrow via mintLicenseOnBehalfOf.
+        // _ensureComponentLicensesFor (inside _mintAs) also buys 1 license for alice.
         uint256 buildId = _mintAs(
             alice,
-            keccak256("geo-license-per-type-uses-six"),
+            keccak256("geo-license-per-instance-uses-six"),
             9,
             componentTokenIds,
             componentCounts,
@@ -921,11 +943,16 @@ contract BuildNFTTest is Test {
             0,
             1
         );
-        assertEq(licenseNFT.balanceOf(alice, licenseId), 0);
+        // _ensureComponentLicensesFor bought 1 license for alice; 6 new licenses minted to BuildNFT for escrow
+        uint256 aliceLicensesAfterMint = licenseNFT.balanceOf(alice, licenseId);
+        assertEq(licenseNFT.balanceOf(address(buildNFT), licenseId), 6);
 
+        uint256 burnFee = buildNFT.BURN_FEE();
         vm.prank(alice);
-        buildNFT.burn{value: 0.005 ether}(buildId);
-        assertEq(licenseNFT.balanceOf(alice, licenseId), 1);
+        buildNFT.burn{value: burnFee}(buildId);
+        // Escrowed licenses returned to alice
+        assertEq(licenseNFT.balanceOf(alice, licenseId), aliceLicensesAfterMint + 6);
+        assertEq(licenseNFT.balanceOf(address(buildNFT), licenseId), 0);
     }
 
     function testKindDisabledRevertsUntilEnabled() public {
@@ -943,9 +970,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             geo,
             1,
-            "ipfs://test",
+            "",
             emptyIds,
             emptyCounts,
+            new BuildNFT.PlacedComponent[](0),
             2,
             0,
             0,
@@ -960,7 +988,7 @@ contract BuildNFTTest is Test {
         licenseRegistry.registerBuild(masterId, geo);
         uint256 licensePrice = licenseRegistry.quote(masterId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(masterId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(masterId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -982,7 +1010,7 @@ contract BuildNFTTest is Test {
         licenseRegistry.registerBuild(masterId, keccak256("collector-master"));
         uint256 licensePrice = licenseRegistry.quote(masterId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(masterId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(masterId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -1011,9 +1039,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             keccak256("different-geometry"),
             7,
-            "ipfs://test",
+            "",
             componentTokenIds,
             componentCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_COLLECTOR,
             0,
             0,
@@ -1033,7 +1062,7 @@ contract BuildNFTTest is Test {
         licenseRegistry.registerBuild(masterId, keccak256("collector-master-2"));
         uint256 licensePrice = licenseRegistry.quote(masterId, 2);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(masterId, 2);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(masterId, 2);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
@@ -1049,9 +1078,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             keccak256("collector-master-2"),
             7,
-            "ipfs://test",
+            "",
             componentTokenIds,
             badCounts,
+            new BuildNFT.PlacedComponent[](0),
             KIND_COLLECTOR,
             0,
             0,
@@ -1065,42 +1095,11 @@ contract BuildNFTTest is Test {
         buildNFT.setKindEnabled(0, true);
     }
 
-    function testDensityAffectsLockedBlox() public {
-        bytes32 geo = keccak256("geo-density-lock");
+    function testLockedBloxMatchesMass() public {
         uint256 mass = 3;
-        uint16 density = 27;
 
-        uint256 componentBrick =
-            _mintBrickAs(bob, keccak256("geo-density-lock-component"), 1, 1, 1, density);
-        vm.prank(bob);
-        licenseRegistry.registerBuild(componentBrick, buildNFT.geometryOf(componentBrick));
-        uint256 price = licenseRegistry.quote(componentBrick, 1);
-        vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentBrick, 1);
-        vm.prank(alice);
-        licenseNFT.setApprovalForAll(address(buildNFT), true);
-
-        uint256[] memory ids = new uint256[](1);
-        ids[0] = componentBrick;
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
-
-        uint256 tokenId = _mintAs(alice, geo, mass, ids, counts, KIND_BUILD, 0, 0, density);
+        uint256 tokenId = _mintBuildAsAlice(keccak256("geo-locked-blox"), mass);
         assertEq(buildNFT.lockedBloxOf(tokenId), mass * BLOX_PER_MASS);
-
-        counts[0] = 4;
-        uint256 brickId = _mintAs(
-            bob,
-            keccak256("geo-density-brick"),
-            mass,
-            ids,
-            counts,
-            KIND_BRICK,
-            2,
-            2,
-            density
-        );
-        assertEq(buildNFT.lockedBloxOf(brickId), mass * BLOX_PER_MASS);
     }
 
     function testBaseTokenURIFormatting() public {
@@ -1121,8 +1120,9 @@ contract BuildNFTTest is Test {
         uint256 mass = 2;
 
         uint256 tokenId = _mintBuildAs(alice, geo, mass, new uint256[](0), new uint256[](0));
+        uint256 burnFee = buildNFT.BURN_FEE();
         vm.prank(alice);
-        buildNFT.burn{value: 0.005 ether}(tokenId);
+        buildNFT.burn{value: burnFee}(tokenId);
 
         uint256 fee = buildNFT.FEE_PER_MINT();
         vm.startPrank(alice);
@@ -1131,9 +1131,10 @@ contract BuildNFTTest is Test {
         buildNFT.mint{value: fee}(
             geo,
             mass,
-            "ipfs://test",
+            "",
             new uint256[](0),
             new uint256[](0),
+            new BuildNFT.PlacedComponent[](0),
             KIND_BUILD,
             0,
             0,
@@ -1153,12 +1154,13 @@ contract BuildNFTTest is Test {
 
         uint256 licensePrice = licenseRegistry.quote(componentId, 1);
         vm.prank(alice);
-        licenseRegistry.mintLicenseForBuild(componentId, 1);
+        licenseRegistry.mintLicenseForBuild{value: licensePrice}(componentId, 1);
         vm.prank(alice);
         licenseNFT.setApprovalForAll(address(buildNFT), true);
 
+        uint256 burnFee = buildNFT.BURN_FEE();
         vm.prank(bob);
-        buildNFT.burn{value: 0.005 ether}(componentId);
+        buildNFT.burn{value: burnFee}(componentId);
 
         uint256[] memory componentTokenIds = new uint256[](1);
         componentTokenIds[0] = componentId;
@@ -1166,8 +1168,11 @@ contract BuildNFTTest is Test {
         uint256 treasuryAccruedBefore = distributor.ethOwed(protocolTreasury);
         _mintBuildAs(alice, keccak256("geo-uses-burned"), 5, componentTokenIds, _ones(1));
 
-        uint256 ownersCut = buildNFT.FEE_PER_MINT() - (buildNFT.FEE_PER_MINT() * 30) / 100
-            - (buildNFT.FEE_PER_MINT() * 30) / 100;
+        uint256 fee = buildNFT.FEE_PER_MINT();
+        uint256 ownersCut = fee
+            - (fee * buildNFT.liquidityBps()) / 10_000
+            - (fee * buildNFT.treasuryBps()) / 10_000;
+        // Burned component's owner cut routes to treasury via distributor
         assertEq(distributor.ethOwed(protocolTreasury), treasuryAccruedBefore + ownersCut);
     }
 }

@@ -2,16 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
-
 interface IBuildNFT {
     function ownerOf(uint256 tokenId) external view returns (address);
     function creatorOf(uint256 tokenId) external view returns (address);
     function geometryOf(uint256 tokenId) external view returns (bytes32);
     function isActive(uint256 tokenId) external view returns (bool);
     function massOf(uint256 tokenId) external view returns (uint256);
-    function densityOf(uint256 tokenId) external view returns (uint16);
     function isBurned(uint256 tokenId) external view returns (bool);
 }
 
@@ -25,8 +21,6 @@ interface ILicenseNFT {
 }
 
 contract LicenseRegistry is Ownable {
-    using SafeERC20 for IERC20;
-
     struct Pricing {
         uint256 startPrice;
         uint256 step;
@@ -36,7 +30,6 @@ contract LicenseRegistry is Ownable {
 
     address public buildNFT;
     address public licenseNFT;
-    IERC20 public blox;
 
     address public treasury;
     uint256 public lpBudgetBalance;
@@ -76,18 +69,16 @@ contract LicenseRegistry is Ownable {
         uint256 indexed licenseId, address indexed buyer, uint256 qty, uint256 price
     );
 
-    constructor(address buildNFT_, address licenseNFT_, address treasury_, address blox_)
+    constructor(address buildNFT_, address licenseNFT_, address treasury_)
         Ownable(msg.sender)
     {
         require(buildNFT_ != address(0), "buildNFT=0");
         require(licenseNFT_ != address(0), "licenseNFT=0");
         require(treasury_ != address(0), "treasury=0");
-        require(blox_ != address(0), "blox=0");
 
         buildNFT = buildNFT_;
         licenseNFT = licenseNFT_;
         treasury = treasury_;
-        blox = IERC20(blox_);
         keepers[msg.sender] = true;
         minRebalanceInterval = 1 hours;
         maxSlippageBps = 1_000;
@@ -182,7 +173,7 @@ contract LicenseRegistry is Ownable {
         return _quoteFromPricing(pricing, _initialSoldForBuild(buildId), qty);
     }
 
-    function mintLicenseForBuild(uint256 buildId, uint256 qty) external {
+    function mintLicenseForBuild(uint256 buildId, uint256 qty) external payable {
         uint256 licenseId = licenseIdForBuild[buildId];
         if (licenseId == 0) {
             licenseId = _registerBuild(buildId);
@@ -192,9 +183,14 @@ contract LicenseRegistry is Ownable {
         }
 
         uint256 price = _quoteForLicense(licenseId, qty);
-        blox.safeTransferFrom(msg.sender, treasury, price);
+        require(msg.value >= price, "insufficient ETH");
 
-        // NEW: fail early if this purchase would exceed max supply
+        // Forward payment to treasury
+        _payETH(treasury, price);
+        // Refund excess
+        uint256 excess = msg.value - price;
+        if (excess > 0) _payETH(msg.sender, excess);
+
         uint256 mintedSoFar = ILicenseNFT(licenseNFT).totalSupply(licenseId);
         uint256 cap = ILicenseNFT(licenseNFT).maxSupply(licenseId);
         require(cap > 0, "max=0");
@@ -203,6 +199,48 @@ contract LicenseRegistry is Ownable {
         ILicenseNFT(licenseNFT).mint(msg.sender, licenseId, qty);
 
         emit LicenseMinted(licenseId, msg.sender, qty, price);
+    }
+
+    /// @notice Mint license directly to `recipient`, paid in ETH by BuildNFT.
+    ///         Only callable by BuildNFT. Forwards ETH to treasury.
+    ///         Returns the licenseId and the ETH price charged.
+    function mintLicenseOnBehalfOf(uint256 buildId, uint256 qty, address recipient)
+        external
+        payable
+        returns (uint256 licenseId, uint256 price)
+    {
+        require(msg.sender == buildNFT, "only buildNFT");
+
+        licenseId = licenseIdForBuild[buildId];
+        if (licenseId == 0) {
+            licenseId = _registerBuild(buildId);
+        } else {
+            require(!IBuildNFT(buildNFT).isBurned(buildId), "build burned");
+            require(IBuildNFT(buildNFT).isActive(buildId), "inactive build");
+        }
+
+        price = _quoteForLicense(licenseId, qty);
+        require(msg.value >= price, "insufficient ETH");
+
+        // Forward payment to treasury
+        if (price > 0) _payETH(treasury, price);
+        // Return excess to caller (BuildNFT)
+        uint256 excess = msg.value - price;
+        if (excess > 0) _payETH(msg.sender, excess);
+
+        uint256 mintedSoFar = ILicenseNFT(licenseNFT).totalSupply(licenseId);
+        uint256 cap = ILicenseNFT(licenseNFT).maxSupply(licenseId);
+        require(cap > 0, "max=0");
+        require(mintedSoFar + qty <= cap, "max exceeded");
+
+        ILicenseNFT(licenseNFT).mint(recipient, licenseId, qty);
+
+        emit LicenseMinted(licenseId, recipient, qty, price);
+    }
+
+    function _payETH(address to, uint256 amount) internal {
+        (bool ok,) = to.call{value: amount}("");
+        require(ok, "ETH transfer failed");
     }
 
     function _registerBuild(uint256 buildId) internal returns (uint256 licenseId) {
@@ -255,11 +293,7 @@ contract LicenseRegistry is Ownable {
 
         uint256 mass = IBuildNFT(buildNFT).massOf(buildId);
         require(mass > 0, "mass=0");
-        uint256 density = IBuildNFT(buildNFT).densityOf(buildId);
-        require(density > 0, "density=0");
-
-        uint256 massWithDensity = mass * density;
-        maxSupply = 10_000_000 / massWithDensity;
+        maxSupply = 10_000_000 / mass;
         require(maxSupply > 0, "max=0");
 
         (uint256 startPriceWei, uint256 maxPriceWei) = _pricingForMaxSupply(maxSupply);

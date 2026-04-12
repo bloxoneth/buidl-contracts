@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract BLOX is ERC20 {
     uint256 public constant MAX_SUPPLY = 1_000_000_000 ether;
 
-    constructor(address initialRecipient) ERC20("ETHBLOX", "BLOX") {
+    constructor(address initialRecipient) ERC20("BUIDL", "BUIDL") {
         _mint(initialRecipient, MAX_SUPPLY);
     }
 

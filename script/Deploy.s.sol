@@ -21,7 +21,7 @@ contract Deploy is Script {
         uint256 maxMass = vm.envOr("MAX_MASS", uint256(1_000_000));
         uint256 licenseHolderBps = vm.envOr("LICENSE_HOLDER_BPS", uint256(0));
         string memory licenseBaseURI =
-            vm.envOr("LICENSE_BASE_URI", string("https://ethblox-app.vercel.app/api/licenses/metadata/{id}"));
+            vm.envOr("LICENSE_BASE_URI", string("https://buidl-app.vercel.app/api/licenses/metadata/{id}"));
 
         vm.startBroadcast(pk);
 
@@ -31,7 +31,7 @@ contract Deploy is Script {
         Distributor distributor = new Distributor(blox, deployer);
         LicenseNFT licenseNFT = new LicenseNFT(licenseBaseURI);
         LicenseRegistry licenseRegistry =
-            new LicenseRegistry(predictedBuildNFT, address(licenseNFT), protocolTreasury, blox);
+            new LicenseRegistry(predictedBuildNFT, address(licenseNFT), protocolTreasury);
         BuildNFT buildNFT = new BuildNFT(
             blox,
             address(distributor),

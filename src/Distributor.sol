@@ -213,8 +213,6 @@ contract Distributor is ReentrancyGuard {
         require(buildIds.length == counts.length, "len");
         require(buildIds.length > 0, "no components");
         require(buildIds.length <= 32, "too many");
-        require(buildDensity > 0, "density=0");
-
         uint256 totalCount = _validateCounts(buildIds, counts);
         uint256 complexity = _complexity(buildMass, buildDensity, buildIds.length, totalCount);
 
@@ -237,11 +235,12 @@ contract Distributor is ReentrancyGuard {
         uint256 totalCount
     ) internal pure returns (uint256) {
         if (uniqueTypes == 0) return 0;
+        buildDensity;
         uint256 scaledMass = buildMass;
         if (scaledMass > type(uint256).max / 1e18) {
             scaledMass = type(uint256).max / 1e18;
         }
-        uint256 base = (scaledMass * 1e18) / buildDensity;
+        uint256 base = scaledMass * 1e18;
         uint256 multiplier = uniqueTypes + totalCount;
         if (base > type(uint256).max / multiplier) {
             return type(uint256).max;
