@@ -479,6 +479,11 @@ contract BuildNFT is ERC721, Ownable, ReentrancyGuard, ERC1155Holder, EIP712 {
         distributor = a;
     }
 
+    function setLicenseRegistry(address a) external onlyOwner {
+        require(a != address(0), "0");
+        licenseRegistry = a;
+    }
+
     function setKindEnabled(uint16 kind, bool enabled) external onlyOwner {
         require(kind != 0, "reserved");
         kindEnabled[kind] = enabled;
