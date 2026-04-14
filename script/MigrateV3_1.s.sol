@@ -70,7 +70,8 @@ contract MigrateV3_1 is Script {
         LicenseRegistryV2 licenseRegistry = new LicenseRegistryV2(
             predictedBuildNFT,
             LICENSE_NFT,
-            protocolTreasury
+            protocolTreasury,
+            liquidityReceiver
         );
         console.log("LicenseRegistryV2:", address(licenseRegistry));
 

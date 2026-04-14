@@ -44,10 +44,16 @@ contract LicenseRegistryV2 is Ownable {
     uint256 public startK = 5_000 ether;             // startPrice = startK / maxSupply
     uint256 public maxRatio = 20;                    // maxPrice = maxRatio × startPrice
 
+    // ── License fee split (owner-adjustable) ──
+    uint16 public ownerShareBps = 5_000;             // 50% to NFT owner of the component
+    uint16 public treasuryShareBps = 3_000;          // 30% to protocol treasury
+    uint16 public liquidityShareBps = 2_000;         // 20% to liquidity
+
     // ── Core state ──
     address public buildNFT;
     address public licenseNFT;
     address public treasury;
+    address public liquidityReceiver;
 
     // ── LP rebalance state ──
     uint256 public lpBudgetBalance;
@@ -72,19 +78,23 @@ contract LicenseRegistryV2 is Ownable {
     event RebalanceGuardsSet(uint256 minRebalanceInterval, uint256 minLpBudgetAmount, uint256 maxSlippageBps, uint256 maxDeadlineWindow);
     event RebalanceExecuted(address indexed keeper, address indexed router, uint256 amount, bool ok);
     event PricingParamsSet(uint256 supplyFactor, uint256 startK, uint256 maxRatio);
+    event LicenseFeeSplitSet(uint16 ownerShareBps, uint16 treasuryShareBps, uint16 liquidityShareBps);
     event BuildRegistered(uint256 indexed buildId, uint256 indexed licenseId, uint256 maxSupply, uint256 startPrice, uint256 step);
     event LicenseMinted(uint256 indexed licenseId, address indexed buyer, uint256 qty, uint256 price);
+    event LicenseFeeSplit(uint256 indexed licenseId, address indexed nftOwner, uint256 ownerAmt, uint256 treasuryAmt, uint256 liquidityAmt);
 
-    constructor(address buildNFT_, address licenseNFT_, address treasury_)
+    constructor(address buildNFT_, address licenseNFT_, address treasury_, address liquidityReceiver_)
         Ownable(msg.sender)
     {
         require(buildNFT_ != address(0), "buildNFT=0");
         require(licenseNFT_ != address(0), "licenseNFT=0");
         require(treasury_ != address(0), "treasury=0");
+        require(liquidityReceiver_ != address(0), "liquidity=0");
 
         buildNFT = buildNFT_;
         licenseNFT = licenseNFT_;
         treasury = treasury_;
+        liquidityReceiver = liquidityReceiver_;
         keepers[msg.sender] = true;
         minRebalanceInterval = 1 hours;
         maxSlippageBps = 1_000;
@@ -108,6 +118,19 @@ contract LicenseRegistryV2 is Ownable {
         startK = startK_;
         maxRatio = maxRatio_;
         emit PricingParamsSet(supplyFactor_, startK_, maxRatio_);
+    }
+
+    function setLicenseFeeSplit(uint16 ownerBps, uint16 treasuryBps, uint16 liquidityBps) external onlyOwner {
+        require(uint256(ownerBps) + uint256(treasuryBps) + uint256(liquidityBps) == 10_000, "bad bps");
+        ownerShareBps = ownerBps;
+        treasuryShareBps = treasuryBps;
+        liquidityShareBps = liquidityBps;
+        emit LicenseFeeSplitSet(ownerBps, treasuryBps, liquidityBps);
+    }
+
+    function setLiquidityReceiver(address a) external onlyOwner {
+        require(a != address(0), "0");
+        liquidityReceiver = a;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
@@ -207,7 +230,7 @@ contract LicenseRegistryV2 is Ownable {
         uint256 price = _quoteForLicense(licenseId, qty);
         require(msg.value >= price, "insufficient ETH");
 
-        _payETH(treasury, price);
+        _splitLicenseFee(buildId, licenseId, price);
         uint256 excess = msg.value - price;
         if (excess > 0) _payETH(msg.sender, excess);
 
@@ -240,7 +263,7 @@ contract LicenseRegistryV2 is Ownable {
         price = _quoteForLicense(licenseId, qty);
         require(msg.value >= price, "insufficient ETH");
 
-        if (price > 0) _payETH(treasury, price);
+        _splitLicenseFee(buildId, licenseId, price);
         uint256 excess = msg.value - price;
         if (excess > 0) _payETH(msg.sender, excess);
 
@@ -260,6 +283,36 @@ contract LicenseRegistryV2 is Ownable {
     function _payETH(address to, uint256 amount) internal {
         (bool ok,) = to.call{value: amount}("");
         require(ok, "ETH transfer failed");
+    }
+
+    /// @dev Split license fee: ownerShareBps to current ownerOf(buildId),
+    ///      treasuryShareBps to treasury, liquidityShareBps to liquidity receiver.
+    function _splitLicenseFee(uint256 buildId, uint256 licenseId, uint256 price) internal {
+        if (price == 0) return;
+
+        uint256 ownerAmt = (price * ownerShareBps) / 10_000;
+        uint256 liquidityAmt = (price * liquidityShareBps) / 10_000;
+        uint256 treasuryAmt = price - ownerAmt - liquidityAmt; // remainder to treasury (avoids rounding dust)
+
+        // Pay the current NFT owner of this component build
+        address nftOwner;
+        try IBuildNFT(buildNFT).ownerOf(buildId) returns (address o) {
+            nftOwner = o;
+        } catch {
+            // Build burned/missing — owner share goes to treasury
+        }
+
+        if (nftOwner != address(0)) {
+            _payETH(nftOwner, ownerAmt);
+        } else {
+            treasuryAmt += ownerAmt;
+            ownerAmt = 0;
+        }
+
+        if (liquidityAmt > 0) _payETH(liquidityReceiver, liquidityAmt);
+        if (treasuryAmt > 0) _payETH(treasury, treasuryAmt);
+
+        emit LicenseFeeSplit(licenseId, nftOwner, ownerAmt, treasuryAmt, liquidityAmt);
     }
 
     function _registerBuild(uint256 buildId) internal returns (uint256 licenseId) {
